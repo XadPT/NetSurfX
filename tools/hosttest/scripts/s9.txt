@@ -1,0 +1,5 @@
+2500 tap Y
+3200 shot 60_hd_osk.png
+3300 tap BACK
+3600 shot 61_hd.png
+3700 quit

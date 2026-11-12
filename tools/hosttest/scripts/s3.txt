@@ -1,0 +1,40 @@
+2500 shot 10_page.png
+2600 ptr 60 191
+2700 tap A
+4200 shot 11_page2_cookie.png
+4300 tap B
+5300 ptr 190 191
+5400 tap A
+6900 shot 12_redirect.png
+7000 tap B
+8000 ptr 258 191
+8100 tap A
+9600 shot 13_gzip.png
+9700 tap B
+10700 ptr 328 191
+10800 tap A
+12300 shot 14_chunked.png
+12400 tap B
+13400 ptr 100 272
+13500 tap A
+14300 shot 15_field_osk.png
+14400 tap B
+14500 tap B
+14600 tap B
+14700 tap B
+14800 tap UP
+14900 tap A
+15000 tap RIGHT
+15100 tap A
+15600 shot 16_field_typed.png
+15700 tap START
+17200 shot 17_post_result.png
+17300 axis RIGHTY 30000
+18000 axis RIGHTY 0
+18300 shot 18_scrolled.png
+18400 axis RT 32000
+18500 axis RT 0
+19000 shot 19_pagedown.png
+19100 tap BLACK
+19400 shot 20_bookmark_toast.png
+20500 quit

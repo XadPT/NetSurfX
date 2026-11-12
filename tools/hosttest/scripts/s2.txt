@@ -1,0 +1,14 @@
+2500 shot 02_http.png
+2600 tap BACK
+3300 shot 03_help.png
+3400 tap A
+3900 tap Y
+4500 shot 04_osk_url.png
+4600 tap DOWN
+4700 tap RIGHT
+4800 tap A
+4900 tap B
+5000 tap Y
+5100 tap A
+5600 shot 05_osk_typed.png
+5700 quit

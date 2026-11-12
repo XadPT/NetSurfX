@@ -1,0 +1,2 @@
+3000 shot 01_home.png
+3100 quit

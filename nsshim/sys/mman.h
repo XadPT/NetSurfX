@@ -1,0 +1,1 @@
+/* sem mmap na Xbox */

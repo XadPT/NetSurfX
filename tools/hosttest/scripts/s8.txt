@@ -1,0 +1,5 @@
+12000 shot 50_stress.png
+12100 axis RT 32000
+12200 axis RT 0
+13000 shot 51_stress_down.png
+13100 quit

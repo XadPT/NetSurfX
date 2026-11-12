@@ -1,0 +1,27 @@
+# Opcoes do NetSurfX. Para usar: muda o nome deste ficheiro para "Choices"
+# (sem extensao), tira o # das linhas que queres e ajusta os valores.
+#
+# Pagina inicial (botao Start):
+#homepage_url:file:///D:/res/home.html
+#
+# Margem para o overscan da TV, em pixeis de cada lado (0 = ecra inteiro):
+#xbox_overscan_x:16
+#xbox_overscan_y:12
+#
+# Tentar 720p (cabo componente e 720p activo no dashboard). 1 = sim
+#xbox_hd:0
+#
+# Motor de pesquisa da barra de endereco: 0 DuckDuckGo, 1 FrogFind, 2 Google, 3 Wikipedia
+#search_provider:0
+#
+# Tamanho de letra base em decimos de ponto (128 = 12,8 pt) e minimo
+#font_size:128
+#font_min_size:100
+#
+# Bloquear publicidade (1) e carregar imagens (1)
+#block_advertisements:1
+#foreground_images:1
+#background_images:1
+#
+# Memoria para paginas e imagens em cache (bytes)
+#memory_cache_size:6291456

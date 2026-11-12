@@ -5,8 +5,10 @@
 #undef MBEDTLS_FS_IO
 #undef MBEDTLS_NET_C
 #undef MBEDTLS_TIMING_C
-#undef MBEDTLS_THREADING_C
 #undef MBEDTLS_THREADING_PTHREAD
+/* varias ligacoes em paralelo (uma thread por pedido): mutexes via CRITICAL_SECTION */
+#define MBEDTLS_THREADING_C
+#define MBEDTLS_THREADING_ALT
 #undef MBEDTLS_AESNI_C
 #undef MBEDTLS_PADLOCK_C
 #undef MBEDTLS_PSA_ITS_FILE_C

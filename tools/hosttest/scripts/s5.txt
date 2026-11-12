@@ -1,0 +1,8 @@
+2500 ptr 70 229
+2600 tap A
+5000 shot 30_https_good.png
+5100 tap B
+6000 ptr 220 229
+6100 tap A
+9000 shot 31_https_selfsigned.png
+9100 quit

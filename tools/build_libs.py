@@ -26,8 +26,9 @@ for lib in libs:
             if t.startswith(('-MMD','-MP','-W','-std','-Werror')) : i += 1; continue
             flags.append(t); i += 1
         if 'expat_xmlparser' in src: continue
+        if lib == 'libnsfb' and src.startswith('src/surface/') and not (src.endswith('surface.c') or src.endswith('ram.c')): continue
         obj = f'{OUT}/obj/{lib}/' + src.replace('/', '_').replace('.c', '.obj')
-        cmd = ['nxdk-cc'] + flags + ['-std=gnu99', f'-I{PFX}/include', '-I/home/claude/netsurfx/nsshim', '-include', '/home/claude/netsurfx/nsshim/strings.h', '-DWITHOUT_ICONV_FILTER', '-O2', '-c', '-o', obj, f'{d}/{src}']
+        cmd = ['nxdk-cc'] + flags + ['-std=gnu99', '-include', '/home/claude/netsurfx/nsshim/xbox_compat.h', '-DXBOX', '-I/home/claude/nxdk/lib/net/lwip/src/include', '-I/home/claude/nxdk/lib/net/nforceif/include', f'-I{PFX}/include', '-I/home/claude/netsurfx/nsshim', '-include', '/home/claude/netsurfx/nsshim/strings.h', '-DWITHOUT_ICONV_FILTER', '-O2', '-Werror=implicit-function-declaration', '-Werror=int-conversion', '-c', '-o', obj, f'{d}/{src}']
         p = subprocess.run(cmd, cwd=d, capture_output=True, text=True)
         if p.returncode:
             fails += 1

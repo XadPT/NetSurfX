@@ -1,0 +1,8 @@
+2000 tap Y
+2500 tap BLACK
+2600 tap WHITE
+2700 tap DOWN
+2800 tap A
+3300 shot 72_osk_sym.png
+3400 tap BACK
+3500 quit

@@ -1,0 +1,7 @@
+2000 ptr 300 27
+2100 tap A
+2800 shot 70_urlbar_click.png
+2900 tap BACK
+3200 ptr 30 27
+3300 shot 71_after.png
+3400 quit

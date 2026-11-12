@@ -1,0 +1,9 @@
+2500 ptr 220 229
+2600 tap A
+5000 ptr 503 402
+5100 tap A
+7500 shot 32_proceed.png
+7600 ptr 175 363
+7700 tap A
+9500 shot 33_certinfo.png
+9600 quit

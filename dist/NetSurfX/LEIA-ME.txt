@@ -1,0 +1,51 @@
+NetSurfX - browser NetSurf 3.11 para a Xbox classica
+=====================================================
+
+INSTALAR
+  Copia a pasta NetSurfX inteira por FTP para o disco da Xbox, por exemplo
+  E:\Apps\NetSurfX\ (o default.xbe tem de ficar ao lado da pasta "res").
+  Arranca o default.xbe a partir do teu dashboard.
+  O cabo de rede tem de estar ligado. Usa a configuracao de rede do
+  dashboard (IP automatico ou manual, e DNS manual se o tiveres, ex.: Insignia).
+
+COMANDO
+  Analogico esquerdo ..... ponteiro
+  A ...................... clicar / abrir ligacao / escrever num campo
+  Analogico direito ...... deslocar a pagina (na zona por baixo do ponteiro)
+  Gatilhos L / R ......... pagina acima / abaixo
+  D-pad .................. setas
+  B ...................... voltar atras        Branco ... avancar
+  X ...................... recarregar          Y ........ escrever endereco
+  Preto .................. guardar nos favoritos
+  Start .................. pagina inicial (pesquisas e favoritos)
+  Back ................... ajuda
+  Cliques nos analogicos . menos zoom / mais zoom
+  L + R + Back + Preto ... voltar ao dashboard (IGR)
+
+TECLADO NO ECRA
+  Abre ao carregar em Y, ao clicar na barra de endereco ou num campo de
+  texto de uma pagina (o texto que ja la estava aparece para editar).
+  A tecla, B apagar, X espaco, Y maiusculas, Branco simbolos/acentos,
+  Preto limpar tudo, L/R mover o cursor, Start ir/enviar, Back cancelar.
+  Na barra de endereco, palavras soltas fazem uma pesquisa.
+
+FICHEIROS
+  res\            recursos (nao mexer), certificados (cacert.pem) e fontes
+  data\           os teus dados: Cookies, favoritos (bookmarks.txt/.html)
+  data\Choices    opcoes (ver data\Choices.exemplo)
+  DEBUG.TXT       cria um ficheiro vazio com este nome ao lado do
+                  default.xbe para gerar um registo em NETSURF.LOG
+  DASH.TXT        (opcional) caminho do teu dashboard para o IGR, ex.:
+                  C:\xboxdash.xbe  (sem ele, a Xbox volta ao dashboard
+                  normal passando pela animacao de arranque)
+
+LIMITES
+  Sem JavaScript, por isso sites modernos muito dinamicos (YouTube,
+  redes sociais) nao funcionam. Sites simples, noticias em modo texto,
+  Wikipedia, foruns e pesquisas funcionam bem (ver a pagina inicial).
+  Se o relogio da Xbox estiver muito errado, alguns sites HTTPS podem
+  mostrar um aviso de certificado (podes continuar com "Proceed").
+
+LICENCAS
+  NetSurf (GPLv2), mbedTLS (Apache 2.0), fontes DejaVu, nxdk (MIT e
+  outras): ver a pasta licencas.

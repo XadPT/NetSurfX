@@ -1,14 +1,25 @@
-# NetSurfX - fase 3: HTTP/HTTPS (lwIP + mbedTLS) + libs do NetSurf
+# NetSurfX - NetSurf 3.11 para a Xbox classica (nxdk)
+#
+# 1) python3 tools/build_libs.py ...   (bibliotecas do NetSurf -> nslibs/lib)
+# 2) python3 tools/build_mbedtls.py    (mbedTLS -> nslibs/lib)
+# 3) python3 tools/build_ns.py         (nucleo + frontend -> nsbuild/obj)
+# 4) make                              (liga tudo e gera default.xbe / NetSurfX.iso)
+
 XBE_TITLE = NetSurfX
 GEN_XISO = $(XBE_TITLE).iso
 NXDK_DIR ?= $(CURDIR)/../nxdk
 NXDK_NET = y
 NXDK_SDL = y
-SRCS = $(CURDIR)/src/main.c $(CURDIR)/src/shim.c $(CURDIR)/src/nstest.c \
-       $(CURDIR)/src/nsplat.c $(CURDIR)/src/nethttp.c
-BUILD_TIME := $(shell date +%s)
-CFLAGS += -O2 -I$(CURDIR)/nsshim -I$(CURDIR)/nslibs/include -I$(CURDIR)/mbedtls_cfg \
-          -DMBEDTLS_USER_CONFIG_FILE=\"ns_mbedtls_config.h\" -DNS_BUILD_TIME=$(BUILD_TIME)LL
-NSLIBS = $(CURDIR)/nslibs/lib
+SRCS = $(CURDIR)/src/xbox_stub.c
 include $(NXDK_DIR)/Makefile
-LDFLAGS += $(NSLIBS)/libmbedtls.lib $(NSLIBS)/libdom.lib $(NSLIBS)/libhubbub.lib $(NSLIBS)/libcss.lib $(NSLIBS)/libparserutils.lib $(NSLIBS)/libwapcaplet.lib
+
+NSLIBS = $(CURDIR)/nslibs/lib
+NSOBJS := $(sort $(wildcard $(CURDIR)/nsbuild/obj/*.obj))
+LDFLAGS += -stack:1048576 $(NSOBJS) \
+	$(NSLIBS)/libnsfb.lib $(NSLIBS)/libnsbmp.lib $(NSLIBS)/libnsgif.lib \
+	$(NSLIBS)/libutf8proc.lib $(NSLIBS)/libnsutils.lib \
+	$(NSLIBS)/libdom.lib $(NSLIBS)/libhubbub.lib $(NSLIBS)/libcss.lib \
+	$(NSLIBS)/libparserutils.lib $(NSLIBS)/libwapcaplet.lib \
+	$(NSLIBS)/libmbedtls.lib \
+	$(NXDK_DIR)/lib/libpng.lib $(NXDK_DIR)/lib/libjpeg.lib $(NXDK_DIR)/lib/libzlib.lib \
+	$(NXDK_DIR)/lib/libfreetype.lib

@@ -1,0 +1,20 @@
+2000 axis LEFTX 32000
+2400 axis LEFTX 0
+2500 shot 40_stick_moved.png
+2600 ptr 110 167
+2700 tap A
+3500 tap UP
+3600 tap A
+3700 tap RIGHT
+3800 tap A
+3900 tap START
+6500 shot 41_search_error.png
+6600 tap START
+7600 ptr 100 320
+7700 tap A
+9000 shot 42_bookmarks.png
+9100 tap B
+10000 tap R3
+10300 tap R3
+11000 shot 43_zoom.png
+11100 quit
