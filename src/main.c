@@ -14,6 +14,8 @@
 #include <string.h>
 
 int nstest_parse(void);
+int nstest_count_tag(const char *html, size_t html_len, const char *tagname);
+#include "nethttp.h"
 #define W 640
 #define H 480
 
@@ -54,6 +56,39 @@ static void ip_to_str(const ip4_addr_t *a, char *out, size_t n)
 
 // Soft reset para o dashboard. Se existir D:\\DASH.TXT (uma linha com o caminho do XBE do
 // dashboard, ex.: C:\\xboxdash.xbe) lanca esse XBE; senao pede o dashboard ao kernel.
+// Teste de rede em segundo plano: HTTP e HTTPS para example.com
+typedef struct { volatile int done, status, stage, err, len, p; } net_test_t;
+static net_test_t g_t_http, g_t_https;
+static volatile int g_nettest_started;
+
+static void run_one(net_test_t *t, const char *url)
+{
+    ns_http_resp r;
+    int rc = ns_http_get(url, &r);
+    t->status = r.status; t->stage = rc ? r.stage : 0; t->err = rc ? r.err : 0;
+    t->len = (int)r.len;
+    t->p = (rc == 0 && r.data) ? nstest_count_tag((const char *)r.data, r.len, "p") : -1;
+    ns_http_free(&r);
+    t->done = 1;
+}
+
+static DWORD WINAPI net_test_thread(LPVOID arg)
+{
+    (void)arg;
+    run_one(&g_t_http, "http://example.com/");
+    run_one(&g_t_https, "https://example.com/");
+    return 0;
+}
+
+static void draw_net_test(SDL_Renderer *ren, int y, const char *label, const net_test_t *t)
+{
+    char line[56];
+    if (!t->done) snprintf(line, sizeof line, "%s ...", label);
+    else if (t->stage) snprintf(line, sizeof line, "%s ST %d E %d", label, t->stage, t->err);
+    else snprintf(line, sizeof line, "%s %d L %d P %d", label, t->status, t->len, t->p);
+    draw_text(ren, 16, y, 4, line);
+}
+
 static SDL_Window *g_win;
 static SDL_Renderer *g_ren;
 
@@ -176,6 +211,10 @@ int main(void)
                 }
                 dns_fixed = true;
             }
+            if (!g_nettest_started) {
+                g_nettest_started = 1;
+                CreateThread(NULL, 256 * 1024, net_test_thread, NULL, 0, NULL);
+            }
             const ip_addr_t *d;
             d = dns_getserver(0);
             if (d) ip_to_str(ip_2_ip4(d), dnsstr, sizeof dnsstr);
@@ -210,6 +249,8 @@ int main(void)
         draw_text(ren, 16, 190, 4, line);
         snprintf(line, sizeof line, "CFG %d FL %u", cfg_ok ? 1 : 0, (unsigned)cfg_flags);
         draw_text(ren, 16, 230, 4, line);
+        draw_net_test(ren, 290, "HTTP", &g_t_http);
+        draw_net_test(ren, 330, "HTTPS", &g_t_https);
 
         SDL_Rect cur = {(int)cx, (int)cy, 10, 10};
         SDL_RenderFillRect(ren, &cur);

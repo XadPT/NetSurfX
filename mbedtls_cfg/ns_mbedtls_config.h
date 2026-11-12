@@ -1,0 +1,31 @@
+/* Ajustes do mbedTLS para a Xbox classica (nxdk) - aplicado sobre a configuracao por defeito */
+#ifndef NS_MBEDTLS_CONFIG_H
+#define NS_MBEDTLS_CONFIG_H
+
+#undef MBEDTLS_FS_IO
+#undef MBEDTLS_NET_C
+#undef MBEDTLS_TIMING_C
+#undef MBEDTLS_THREADING_C
+#undef MBEDTLS_THREADING_PTHREAD
+#undef MBEDTLS_AESNI_C
+#undef MBEDTLS_PADLOCK_C
+#undef MBEDTLS_PSA_ITS_FILE_C
+#undef MBEDTLS_PSA_CRYPTO_STORAGE_C
+#undef MBEDTLS_HAVE_TIME_DATE
+#undef MBEDTLS_ENTROPY_NV_SEED
+#undef MBEDTLS_PLATFORM_NV_SEED_ALT
+#undef MBEDTLS_DEBUG_C
+#undef MBEDTLS_SELF_TEST
+#undef MBEDTLS_PLATFORM_TIME_ALT
+
+#define MBEDTLS_NO_PLATFORM_ENTROPY
+#define MBEDTLS_ENTROPY_HARDWARE_ALT
+#define MBEDTLS_HAVE_TIME
+#define MBEDTLS_HAVE_TIME_DATE
+#define MBEDTLS_PLATFORM_TIME_MACRO ns_time
+#define MBEDTLS_PLATFORM_TIME_TYPE_MACRO long long
+#define MBEDTLS_PLATFORM_GMTIME_R_ALT
+
+long long ns_time(long long *t);
+
+#endif
