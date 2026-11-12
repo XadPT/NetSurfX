@@ -1,0 +1,11 @@
+nsbuild/
+nslibs/
+bin/
+*.obj
+*.lib
+*.d
+*.exe
+*.xbe
+*.iso
+*.map
+*.zip
