@@ -124,6 +124,20 @@ static void cmdpush(xb_priv *p, int cmd)
 	p->cn++;
 }
 
+static bool g_dpad_links = true;
+void nsfb_xbox_set_dpad_links(bool on) { g_dpad_links = on; }
+
+static int dpad_cmd(int key)
+{
+	switch (key) {
+	case NSFB_KEY_UP: return NSX_CMD_NAV_UP;
+	case NSFB_KEY_DOWN: return NSX_CMD_NAV_DOWN;
+	case NSFB_KEY_LEFT: return NSX_CMD_NAV_LEFT;
+	default: return NSX_CMD_NAV_RIGHT;
+	}
+}
+
+
 int nsfb_xbox_pop_command(void)
 {
 	xb_priv *p = g_xb;
@@ -239,9 +253,13 @@ static void pump_sticks(nsfb_t *nsfb, xb_priv *p)
 
 	/* repeticao do D-pad enquanto premido */
 	if (p->held_key && now - p->held_since > REPEAT_DELAY_MS &&
-	    now - p->held_last > REPEAT_RATE_MS) {
-		qkey(p, NSFB_EVENT_KEY_DOWN, p->held_key);
-		qkey(p, NSFB_EVENT_KEY_UP, p->held_key);
+	    now - p->held_last > (g_dpad_links ? 180u : REPEAT_RATE_MS)) {
+		if (g_dpad_links) {
+			if (p->cn == 0) cmdpush(p, dpad_cmd(p->held_key));  /* nao acumula */
+		} else {
+			qkey(p, NSFB_EVENT_KEY_DOWN, p->held_key);
+			qkey(p, NSFB_EVENT_KEY_UP, p->held_key);
+		}
 		p->held_last = now;
 	}
 }
@@ -323,7 +341,11 @@ static void handle_sdl(xb_priv *p, const SDL_Event *ev)
 		default: break;
 		}
 		if (key) {
-			qkey(p, down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP, key);
+			if (g_dpad_links) {
+				if (down) cmdpush(p, dpad_cmd(key));
+			} else {
+				qkey(p, down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP, key);
+			}
 			if (down) {
 				p->held_key = key;
 				p->held_since = p->held_last = SDL_GetTicks();

@@ -34,3 +34,12 @@
 #
 # Teclado USB com disposicao americana (1) em vez da portuguesa (0)
 #xbox_kbd_us:0
+#
+# D-pad: 1 = saltar entre links, 0 = deslocar a pagina
+#xbox_dpad_links:1
+#
+# Versao dos sites: 0 normal, 1 movel, 2 leve (telemovel antigo), 3 texto
+#xbox_ua_mode:0
+#
+# Pasta dos downloads
+#xbox_download_dir:E:\Downloads

@@ -51,6 +51,12 @@ NSOPTION_INTEGER(xbox_overscan_y, 12)
 NSOPTION_BOOL(xbox_hd, false)
 /** teclado USB com disposicao americana (por omissao: portuguesa) */
 NSOPTION_BOOL(xbox_kbd_us, false)
+/** D-pad salta entre links e campos (false: desloca a pagina como setas) */
+NSOPTION_BOOL(xbox_dpad_links, true)
+/** identificacao: 0 NetSurf, 1 telemovel, 2 telemovel antigo, 3 browser de texto */
+NSOPTION_INTEGER(xbox_ua_mode, 0)
+/** pasta dos downloads */
+NSOPTION_STRING(xbox_download_dir, "E:\\Downloads")
 
 /***** font options *****/
 

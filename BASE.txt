@@ -1,1 +1,1 @@
-Base NetSurf (v0.6): etonedemid/netsurf-switch @ 3dabe65c245ab29a22f243e88d407caf2c09b5c2 + tools/patch_netsurf.py
+Base NetSurf (v0.7): etonedemid/netsurf-switch @ 3dabe65c245ab29a22f243e88d407caf2c09b5c2 + tools/patch_netsurf.py

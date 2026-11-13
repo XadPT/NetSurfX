@@ -16,13 +16,19 @@ enum nsx_cmd {
 	NSX_CMD_PAGE_UP,    /* gatilho L */
 	NSX_CMD_PAGE_DOWN,  /* gatilho R */
 	NSX_CMD_ZOOM_OUT,   /* clique no analogico esquerdo */
-	NSX_CMD_ZOOM_IN     /* clique no analogico direito */
+	NSX_CMD_ZOOM_IN,    /* clique no analogico direito */
+	NSX_CMD_NAV_UP,     /* D-pad no modo "saltar entre links" */
+	NSX_CMD_NAV_DOWN,
+	NSX_CMD_NAV_LEFT,
+	NSX_CMD_NAV_RIGHT
 };
 
 struct nsfb_s;
 struct _SDL_GameController;
 
 void nsfb_xbox_register(void);
+/* D-pad: true = saltar entre links (comandos NAV), false = setas */
+void nsfb_xbox_set_dpad_links(bool on);
 int  nsfb_xbox_pop_command(void);
 void nsfb_xbox_take_scroll(int *dx, int *dy);
 void nsfb_xbox_get_pointer(int *x, int *y);

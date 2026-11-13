@@ -148,6 +148,12 @@ struct xf {
 	struct cert_chain *chain;
 	bool chain_ready;
 	HANDLE thread;
+
+	/* --- download para ficheiro (sem passar pela cache em memoria) --- */
+	FILE *sink;                  /* se != NULL o corpo vai para aqui */
+	volatile int dl_status;      /* codigo HTTP da resposta */
+	int64_t dl_total;            /* tamanho anunciado (-1 desconhecido), g_lock */
+	int64_t dl_got;              /* bytes ja escritos, g_lock */
 };
 
 static struct xf *g_ring;
@@ -193,6 +199,18 @@ static void set_error(struct xf *f, enum xf_result r, const char *msg)
 /* entrega dados com controlo de fluxo: se a thread principal estiver atrasada, espera */
 static bool push_data(struct xf *f, const uint8_t *p, size_t n)
 {
+	if (f->sink != NULL) {
+		/* download: directo para o disco, sem guardar em memoria */
+		if (f->cancel) return false;
+		if (fwrite(p, 1, n, f->sink) != n) {
+			set_error(f, XR_ERROR, "Nao foi possivel escrever no disco (cheio?)");
+			return false;
+		}
+		EnterCriticalSection(&g_lock);   /* 64 bits: nao atomico no Pentium III */
+		f->dl_got += (int64_t)n;
+		LeaveCriticalSection(&g_lock);
+		return true;
+	}
 	for (;;) {
 		EnterCriticalSection(&g_lock);
 		if (f->cancel) { LeaveCriticalSection(&g_lock); return false; }
@@ -992,6 +1010,18 @@ static enum rr run_on_conn(struct xf *f, struct conn *c, bool reused, bool *reus
 			bd.gzip_ok = true;
 		}
 		if (status == 204 || status == 304) bd.done = true;
+		f->dl_status = status;
+		if (f->sink != NULL) {
+			EnterCriticalSection(&g_lock);
+			f->dl_total = (!bd.chunked && !bd.gzip) ? bd.remaining : -1;
+			LeaveCriticalSection(&g_lock);
+			if (status < 200 || status >= 300) {
+				/* redireccao ou erro: o corpo nao interessa (o gestor trata) */
+				set_error(f, XR_OK, "");
+				keepalive = false;
+				goto out;
+			}
+		}
 		if (bd.remaining == 0) bd.done = true;
 		/* sem tamanho nem chunked: o corpo acaba quando o servidor fechar */
 		if (!bd.done && !bd.chunked && bd.remaining < 0) keepalive = false;
@@ -1201,7 +1231,8 @@ static void *xf_setup(struct fetch *parent, nsurl *url, bool only_2xx, bool down
 	else
 		req_add(&b, &bl, &bc, "%s %s HTTP/1.1\r\nHost: %s:%d\r\n", f->is_post ? "POST" : "GET", path, f->host, f->port);
 	req_add(&b, &bl, &bc, "User-Agent: %s\r\n", g_user_agent ? g_user_agent : "NetSurf");
-	req_add(&b, &bl, &bc, "Accept-Encoding: gzip\r\nConnection: keep-alive\r\n");
+	req_add(&b, &bl, &bc, "Accept-Encoding: %s\r\nConnection: keep-alive\r\n",
+		parent != NULL ? "gzip" : "identity");
 	if (nsoption_charp(accept_language) && nsoption_charp(accept_language)[0])
 		req_add(&b, &bl, &bc, "Accept-Language: %s, *;q=0.1\r\n", nsoption_charp(accept_language));
 	if (nsoption_charp(accept_charset) && nsoption_charp(accept_charset)[0])
@@ -1229,7 +1260,8 @@ static void *xf_setup(struct fetch *parent, nsurl *url, bool only_2xx, bool down
 	f->post = body;
 	f->post_len = body_len;
 
-	RING_INSERT(g_ring, f);
+	if (parent != NULL)
+		RING_INSERT(g_ring, f);
 	return f;
 
 fail:
@@ -1582,4 +1614,208 @@ nserror fetch_xbox_register(void)
 	err = fetcher_add(lwc_string_ref(corestring_lwc_http), &ops);
 	if (err != NSERROR_OK) return err;
 	return fetcher_add(lwc_string_ref(corestring_lwc_https), &ops);
+}
+
+/* ================================================================ downloads */
+
+/*
+ * Um download de cada vez, escrito directamente no disco pela thread de
+ * rede (a cache do NetSurf guardaria o ficheiro inteiro em memoria, o que
+ * na Xbox, com 64 MB, nao da para ficheiros grandes).
+ */
+#include "xbox_download.h"
+
+static struct {
+	struct xf *f;
+	nsurl *url;
+	FILE *fp;
+	char path[300];
+	char name[64];
+	int redirects;
+	enum nsx_dl_state state;
+	char err[160];
+	int64_t got, total;
+	bool cancel;
+} g_dl;
+
+static bool dl_spawn(nsurl *url)
+{
+	struct xf *f = xf_setup(NULL, url, false, false, NULL, NULL, NULL);
+	if (f == NULL) return false;
+	f->sink = g_dl.fp;
+	f->dl_total = -1;
+	xf_start(f);
+	if (f->thread == NULL) {
+		nsurl_unref(f->url);
+		EnterCriticalSection(&g_lock);
+		xf_release(f);
+		LeaveCriticalSection(&g_lock);
+		return false;
+	}
+	g_dl.f = f;
+	return true;
+}
+
+bool nsx_dl_begin(nsurl *url, const char *path, const char *name)
+{
+	if (g_dl.state == NSX_DL_RUNNING || !g_inited) return false;
+	memset(&g_dl, 0, sizeof g_dl);
+	snprintf(g_dl.path, sizeof g_dl.path, "%s", path);
+	snprintf(g_dl.name, sizeof g_dl.name, "%s", name);
+	g_dl.fp = fopen(path, "wb");
+	if (g_dl.fp == NULL) {
+		g_dl.state = NSX_DL_FAILED;
+		snprintf(g_dl.err, sizeof g_dl.err, "N\xc3\xa3o foi poss\xc3\xadvel criar o ficheiro");
+		return false;
+	}
+	g_dl.total = -1;
+	g_dl.url = nsurl_ref(url);
+	g_dl.state = NSX_DL_RUNNING;
+	if (!dl_spawn(url)) {
+		fclose(g_dl.fp);
+		g_dl.fp = NULL;
+		remove(path);
+		nsurl_unref(g_dl.url);
+		g_dl.url = NULL;
+		g_dl.state = NSX_DL_FAILED;
+		snprintf(g_dl.err, sizeof g_dl.err, "N\xc3\xa3o foi poss\xc3\xadvel iniciar o download");
+		return false;
+	}
+	return true;
+}
+
+void nsx_dl_cancel(void)
+{
+	if (g_dl.state != NSX_DL_RUNNING || g_dl.f == NULL) return;
+	g_dl.cancel = true;
+	g_dl.f->cancel = true;
+}
+
+/* procura um cabecalho (sem distinguir maiusculas) nas linhas recebidas */
+static char *dl_header(struct xf *f, const char *name)
+{
+	size_t nl = strlen(name);
+	const char *p = f->hdr;
+	if (p == NULL) return NULL;
+	while (*p) {
+		const char *e = strstr(p, "\r\n");
+		size_t ll = e ? (size_t)(e - p) : strlen(p);
+		if (ll > nl && !strncasecmp(p, name, nl) && p[nl] == ':') {
+			const char *v = p + nl + 1;
+			while (*v == ' ' || *v == '\t') v++;
+			return strndup(v, ll - (size_t)(v - p));
+		}
+		if (!e) break;
+		p = e + 2;
+	}
+	return NULL;
+}
+
+static void dl_finish(enum nsx_dl_state st, const char *err)
+{
+	if (g_dl.fp) { fclose(g_dl.fp); g_dl.fp = NULL; }
+	if (st != NSX_DL_DONE) remove(g_dl.path);
+	if (g_dl.url) { nsurl_unref(g_dl.url); g_dl.url = NULL; }
+	g_dl.state = st;
+	snprintf(g_dl.err, sizeof g_dl.err, "%s", err ? err : "");
+}
+
+enum nsx_dl_state nsx_dl_poll(struct nsx_dl_info *info)
+{
+	if (g_dl.state == NSX_DL_RUNNING && g_dl.f != NULL) {
+		struct xf *f = g_dl.f;
+		enum xf_result r;
+		char err[160];
+		int status;
+
+		bool thread_done;
+		EnterCriticalSection(&g_lock);
+		g_dl.got = f->dl_got;
+		g_dl.total = f->dl_total;
+		r = f->result;
+		snprintf(err, sizeof err, "%s", f->err);
+		thread_done = f->refs == 1;     /* a thread larga a sua referencia ao sair */
+		LeaveCriticalSection(&g_lock);
+
+		if (r != XR_RUNNING && thread_done) {
+			char *loc = NULL;
+			status = f->dl_status;
+			if (r == XR_OK && status >= 300 && status < 400)
+				loc = dl_header(f, "Location");
+			g_dl.f = NULL;
+			nsurl_unref(f->url);
+			EnterCriticalSection(&g_lock);
+			xf_release(f);
+			LeaveCriticalSection(&g_lock);
+
+			if (g_dl.cancel) {
+				dl_finish(NSX_DL_CANCELLED, "Cancelado");
+			} else if (loc != NULL && g_dl.redirects < 5) {
+				nsurl *next = NULL;
+				g_dl.redirects++;
+				if (nsurl_join(g_dl.url, loc, &next) == NSERROR_OK) {
+					/* recomeca o ficheiro do zero no novo endereco */
+					nsurl_unref(g_dl.url);
+					g_dl.url = next;
+					fclose(g_dl.fp);
+					g_dl.fp = fopen(g_dl.path, "wb");
+					if (g_dl.fp == NULL || !dl_spawn(next))
+						dl_finish(NSX_DL_FAILED, "Falhou ao seguir o redireccionamento");
+				} else {
+					dl_finish(NSX_DL_FAILED, "Redireccionamento inv\xc3\xa1lido");
+				}
+			} else if (r != XR_OK) {
+				dl_finish(NSX_DL_FAILED, err[0] ? err : "Erro de rede");
+			} else if (status < 200 || status >= 300) {
+				char m[64];
+				snprintf(m, sizeof m, "O servidor respondeu com o erro %d", status);
+				dl_finish(NSX_DL_FAILED, m);
+			} else if (g_dl.total >= 0 && g_dl.got < g_dl.total) {
+				dl_finish(NSX_DL_FAILED, "Download incompleto (liga\xc3\xa7\xc3\xa3o cortada)");
+			} else {
+				dl_finish(NSX_DL_DONE, NULL);
+			}
+			free(loc);
+		}
+	}
+	if (info != NULL) {
+		info->state = g_dl.state;
+		info->got = g_dl.got;
+		info->total = g_dl.total;
+		info->name = g_dl.name;
+		info->path = g_dl.path;
+		info->err = g_dl.err;
+	}
+	return g_dl.state;
+}
+
+/* depois de mostrar o resultado, volta ao estado "nada" */
+void nsx_dl_ack(void)
+{
+	if (g_dl.state != NSX_DL_RUNNING) g_dl.state = NSX_DL_NONE;
+}
+
+/* ================================================================ identificacao (User-Agent) */
+
+/*
+ * Alguns sites mandam paginas mais leves conforme o browser que dizemos ser.
+ * 0 NetSurf (normal), 1 telemovel moderno, 2 telemovel antigo (Opera Mini),
+ * 3 browser de texto (Links). So afecta pedidos novos.
+ */
+static const char *const ua_modes[] = {
+	NULL,
+	"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+	"Opera/9.80 (J2ME/MIDP; Opera Mini/9.80 (S60; SymbOS; Opera Mobi/23.348; U; pt) Presto/2.5.25 Version/10.54",
+	"Links (2.29; Linux i686; GNU C; text)",
+};
+
+void nsx_set_ua_mode(int mode)
+{
+	char *ua;
+	if (mode < 0 || mode >= (int)(sizeof ua_modes / sizeof ua_modes[0])) mode = 0;
+	ua = strdup(ua_modes[mode] ? ua_modes[mode] : user_agent_string());
+	if (ua == NULL) return;
+	/* so a thread principal le g_user_agent (em xf_setup) */
+	free(g_user_agent);
+	g_user_agent = ua;
 }

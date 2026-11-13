@@ -11,6 +11,8 @@
 #include <hal/debug.h>
 #include <hal/xbox.h>
 
+#include <nxdk/mount.h>
+
 #include "xbox_platform.h"
 
 static bool file_exists(const char *p)
@@ -49,4 +51,18 @@ void nsx_fatal(const char *msg)
 		XLaunchXBE(NULL);
 		Sleep(500);
 	}
+}
+
+/* o nxdk so liga D: (a pasta do XBE); E:, F: e G: sao as particoes do
+ * disco onde ficam os downloads (F:/G: so existem em discos maiores) */
+void nsx_mount_drives(void)
+{
+	static const struct { char l; const char *p; } d[] = {
+		{ 'E', "\\Device\\Harddisk0\\Partition1\\" },
+		{ 'F', "\\Device\\Harddisk0\\Partition6\\" },
+		{ 'G', "\\Device\\Harddisk0\\Partition7\\" },
+	};
+	for (unsigned i = 0; i < sizeof d / sizeof d[0]; i++)
+		if (!nxIsDriveMounted(d[i].l))
+			nxMountDrive(d[i].l, d[i].p);
 }

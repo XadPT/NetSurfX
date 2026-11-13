@@ -562,7 +562,7 @@ void nsx_help_show(void)
 		"A                     clicar / abrir liga\xc3\xa7\xc3\xa3o / escrever num campo",
 		"Anal\xc3\xb3gico direito    deslocar a p\xc3\xa1gina",
 		"Gatilhos L / R        p\xc3\xa1gina acima / abaixo",
-		"D-pad                 setas (deslocar ou mover no texto)",
+		"D-pad                 saltar entre links e campos",
 		"B                     voltar atr\xc3\xa1s",
 		"Branco                avan\xc3\xa7" "ar",
 		"X                     recarregar",
@@ -706,6 +706,21 @@ void nsx_toast(const char *msg)
 
 /* ------------------------------------------------------------------ menu (lista) */
 
+/* bytes de s que cabem em max_chars caracteres (sem partir UTF-8) */
+static size_t fit_len(const char *s, int max_chars)
+{
+	size_t i = 0;
+	int n = 0;
+	while (s[i]) {
+		if (((unsigned char)s[i] & 0xC0) != 0x80) {
+			if (n == max_chars) break;
+			n++;
+		}
+		i++;
+	}
+	return i;
+}
+
 /* lista vertical modal. Devolve o indice escolhido (A, ou esquerda/direita
  * se dir != NULL: *dir = -1/+1, 0 para A) ou -1 se fechado (B/Start/Back). */
 int nsx_menu(const char *title, const char *const *labels, int n, int sel,
@@ -737,16 +752,17 @@ int nsx_menu(const char *title, const char *const *labels, int n, int sel,
 		if (sel >= first + visible) first = sel - visible + 1;
 		ui_fill(x0 - 2, y0 - 2, x0 + pw + 2, y0 + ph + 2, 0xff10a010);
 		ui_fill(x0, y0, x0 + pw, y0 + ph, 0xff202020);
-		ui_text(x0 + 24, y0 + 36, &ft, title, strlen(title));
+		ui_text(x0 + 24, y0 + 36, &ft, title, fit_len(title, (pw - 48) / 12));
 		for (int i = 0; i < visible; i++) {
 			int k = first + i;
 			int ry = y0 + 56 + i * row_h;
 			const char *l = labels[k];
+			size_t ln = fit_len(l, (pw - 56) / 9);
 			if (k == sel) {
 				ui_fill(x0 + 12, ry, x0 + pw - 12, ry + row_h - 4, 0xff10a010);
-				ui_text(x0 + 28, ry + row_h - 12, &fsel, l, strlen(l));
+				ui_text(x0 + 28, ry + row_h - 12, &fsel, l, ln);
 			} else {
-				ui_text(x0 + 28, ry + row_h - 12, &fs, l, strlen(l));
+				ui_text(x0 + 28, ry + row_h - 12, &fs, l, ln);
 			}
 		}
 		if (first > 0)

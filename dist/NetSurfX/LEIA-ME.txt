@@ -1,7 +1,18 @@
-NetSurfX v0.6 - browser NetSurf para a Xbox classica
+NetSurfX v0.7 - browser NetSurf para a Xbox classica
 =====================================================
 Base: NetSurf 3.11 com as melhorias do port para a Switch
 (etonedemid/netsurf-switch), adaptado a Xbox.
+
+NOVO NA v0.7
+  - D-pad salta de link em link (e entre campos de formularios), como nos
+    browsers da Wii e da 3DS. Se nao houver links nessa direccao, a
+    pagina desloca-se. (Definicoes > D-pad para voltar ao modo antigo.)
+  - Downloads: ficheiros que o browser nao mostra (zip, xbe, iso, mp3...)
+    podem ser guardados em E:\Downloads (muda-se nas Definicoes). Vao
+    directos para o disco, por isso podem ser grandes. O progresso aparece
+    em baixo e no menu Start, onde tambem se pode cancelar.
+  - "Versao dos sites" (Definicoes): Normal, Site movel, Leve (telemovel
+    antigo) ou Texto. Alguns sites mandam paginas mais leves e rapidas.
 
 NOVO NA v0.6
   - Mais rapido: as ligacoes ficam abertas entre pedidos (keep-alive),
@@ -35,7 +46,7 @@ COMANDO
   A ...................... clicar / abrir ligacao / escrever num campo
   Analogico direito ...... deslocar a pagina (na zona por baixo do ponteiro)
   Gatilhos L / R ......... pagina acima / abaixo
-  D-pad .................. setas
+  D-pad .................. saltar entre links e campos
   B ...................... voltar atras        Branco ... avancar
   X ...................... recarregar          Y ........ escrever endereco
   Preto .................. guardar nos favoritos

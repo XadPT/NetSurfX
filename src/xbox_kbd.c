@@ -171,7 +171,8 @@ static uint32_t usage_char(uint8_t u, bool shift, bool altgr, bool caps)
 		return c;
 	}
 	if (u >= 0x1E && u <= 0x38) {
-		const struct keymap *m = &(g_layout == NSX_KBD_PT ? pt_sym : us_sym)[u - 0x1E];
+		const struct keymap *tbl = (g_layout == NSX_KBD_PT) ? pt_sym : us_sym;
+		const struct keymap *m = tbl + (u - 0x1E);
 		if (altgr) return m->altgr;
 		return shift ? m->shift : m->normal;
 	}

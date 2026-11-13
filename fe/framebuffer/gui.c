@@ -59,6 +59,14 @@
 #include "html/webfont.h"
 #include "content/backing_store.h"
 #include "content/urldb.h"
+#include "html/box.h"
+#include <dom/dom.h>
+#include "html/html_save.h"
+#include "html/form_internal.h"
+#include "content/content.h"
+#include "netsurf/content.h"
+#include <sys/stat.h>
+#include "desktop/scrollbar.h"
 
 #ifdef FB_USE_FREETYPE
 extern struct gui_canvas_table *framebuffer_canvas_table;
@@ -68,6 +76,9 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "framebuffer/local_history.h"
 #include "framebuffer/xbox_ui.h"
 #include "xbox_kbd.h"
+#include "xbox_download.h"
+#include "netsurf/download.h"
+#include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
 
 #include "nsfb_xbox.h"
@@ -654,6 +665,374 @@ static void fb_zoom(struct gui_window *gw, float delta)
 static void widget_scroll_y(struct gui_window *gw, int y, bool abs);
 static void widget_scroll_x(struct gui_window *gw, int x, bool abs);
 
+/* ------------------------------------------------------------------ downloads */
+
+/* pedido de download vindo do nucleo (tratado no ciclo principal) */
+static struct { nsurl *url; char *name; unsigned long long size; } g_dl_pending;
+static uint32_t g_dl_last_status;
+
+/* nome valido no FATX: max 42 caracteres, sem simbolos proibidos */
+static void fatx_name(const char *in, char *out, size_t outsz)
+{
+	char tmp[256];
+	size_t n = 0;
+	const char *dot;
+	for (const unsigned char *p = (const unsigned char *)in; *p && n < sizeof tmp - 1; p++) {
+		unsigned char c = *p;
+		if (c >= 0x80) {
+			/* acentos (UTF-8): troca por '_' uma vez por caracter */
+			if ((c & 0xC0) == 0x80) continue;
+			c = '_';
+		}
+		if (c < 32 || strchr("<>:\"/\\|?*+,;=[]", c)) c = '_';
+		tmp[n++] = (char)c;
+	}
+	tmp[n] = 0;
+	if (n == 0) snprintf(tmp, sizeof tmp, "download");
+	dot = strrchr(tmp, '.');
+	if (strlen(tmp) > 42) {
+		/* mantem a extensao */
+		size_t el = dot ? strlen(dot) : 0;
+		if (el > 10) el = 0;
+		snprintf(out, outsz, "%.*s%s", (int)(42 - el), tmp, el ? dot : "");
+	} else {
+		snprintf(out, outsz, "%s", tmp);
+	}
+}
+
+static bool path_exists(const char *p)
+{
+	struct stat st;
+	return stat(p, &st) == 0;
+}
+
+/* pasta de destino: a das opcoes; se nao der, D:\Downloads */
+static const char *dl_dir(void)
+{
+	static char dir[260];
+	const char *opt = nsoption_charp(xbox_download_dir);
+	snprintf(dir, sizeof dir, "%s", (opt && opt[0]) ? opt : "E:\\Downloads");
+	CreateDirectoryA(dir, NULL);
+	if (!path_exists(dir)) {
+		snprintf(dir, sizeof dir, "D:\\Downloads");
+		CreateDirectoryA(dir, NULL);
+	}
+	return dir;
+}
+
+static void fmt_size(char *b, size_t bs, long long v)
+{
+	if (v < 0) snprintf(b, bs, "?");
+	else if (v < 1024 * 1024) snprintf(b, bs, "%lld KB", (v + 1023) / 1024);
+	else snprintf(b, bs, "%lld,%lld MB", v / (1024 * 1024), (v % (1024 * 1024)) * 10 / (1024 * 1024));
+}
+
+static struct gui_download_window *fb_download_create(struct download_context *ctx,
+						       struct gui_window *parent)
+{
+	(void)parent;
+	if (g_dl_pending.url != NULL) return NULL;
+	g_dl_pending.url = nsurl_ref(download_context_get_url(ctx));
+	g_dl_pending.name = strdup(download_context_get_filename(ctx) ?
+				   download_context_get_filename(ctx) : "download");
+	g_dl_pending.size = download_context_get_total_length(ctx);
+	/* devolver NULL faz o nucleo cancelar o seu download (que ficaria todo
+	 * em memoria); o nosso escreve directamente no disco */
+	return NULL;
+}
+
+static nserror fb_download_data(struct gui_download_window *dw, const char *data, unsigned int size)
+{
+	(void)dw; (void)data; (void)size;
+	return NSERROR_OK;
+}
+static void fb_download_error(struct gui_download_window *dw, const char *m) { (void)dw; (void)m; }
+static void fb_download_done(struct gui_download_window *dw) { (void)dw; }
+
+static struct gui_download_table download_table = {
+	.create = fb_download_create,
+	.data = fb_download_data,
+	.error = fb_download_error,
+	.done = fb_download_done,
+};
+struct gui_download_table *framebuffer_download_table = &download_table;
+
+static void fb_download_tick(struct gui_window *gw)
+{
+	struct nsx_dl_info info;
+	enum nsx_dl_state st;
+
+	/* novo pedido: confirmar */
+	if (g_dl_pending.url != NULL) {
+		nsurl *url = g_dl_pending.url;
+		char name[64], q[200], sz[32], path[320];
+		const char *dir;
+		int k = 1;
+
+		g_dl_pending.url = NULL;
+		fatx_name(g_dl_pending.name, name, sizeof name);
+		free(g_dl_pending.name);
+		g_dl_pending.name = NULL;
+		fmt_size(sz, sizeof sz, g_dl_pending.size ? (long long)g_dl_pending.size : -1);
+
+		if (nsx_dl_poll(NULL) == NSX_DL_RUNNING) {
+			nsx_toast("J\xc3\xa1 h\xc3\xa1 um download em curso");
+			nsurl_unref(url);
+			return;
+		}
+		dir = dl_dir();
+		{
+			char opt[200];
+			const char *items[2];
+			snprintf(q, sizeof q, "%s (%s)", name, sz);
+			snprintf(opt, sizeof opt, "Guardar em %s", dir);
+			items[0] = opt;
+			items[1] = "N\xc3\xa3o guardar";
+			k = nsx_menu(q, items, 2, 0, "Descarregar este ficheiro?", NULL);
+		}
+		if (k == 0) {
+			k = 1;
+			/* nome livre: "nome (2).ext" se ja existir */
+			snprintf(path, sizeof path, "%s\\%s", dir, name);
+			while (path_exists(path) && k < 100) {
+				const char *dot = strrchr(name, '.');
+				int base = dot ? (int)(dot - name) : (int)strlen(name);
+				k++;
+				if (base > 36) base = 36;
+				snprintf(path, sizeof path, "%s\\%.*s(%d)%s", dir, base, name, k, dot ? dot : "");
+			}
+			if (nsx_dl_begin(url, path, name))
+				nsx_toast("Download iniciado (v\xc3\xaa o progresso no menu Start)");
+			else
+				nsx_toast("N\xc3\xa3o foi poss\xc3\xadvel iniciar o download");
+		}
+		nsurl_unref(url);
+	}
+
+	st = nsx_dl_poll(&info);
+	if (st == NSX_DL_RUNNING) {
+		uint32_t now = (uint32_t)GetTickCount();
+		if (now - g_dl_last_status > 700) {
+			char m[160], a[32], b[32];
+			g_dl_last_status = now;
+			fmt_size(a, sizeof a, info.got);
+			if (info.total > 0) {
+				fmt_size(b, sizeof b, info.total);
+				snprintf(m, sizeof m, "Download: %s  %d%%  (%s de %s)", info.name,
+					 (int)(info.got * 100 / info.total), a, b);
+			} else {
+				snprintf(m, sizeof m, "Download: %s  %s", info.name, a);
+			}
+			fbtk_set_text(gw->status, m);
+		}
+	} else if (st == NSX_DL_DONE || st == NSX_DL_FAILED || st == NSX_DL_CANCELLED) {
+		char m[400];
+		if (st == NSX_DL_DONE)
+			snprintf(m, sizeof m, "Download conclu\xc3\xad" "do: %s", info.path);
+		else if (st == NSX_DL_CANCELLED)
+			snprintf(m, sizeof m, "Download cancelado");
+		else
+			snprintf(m, sizeof m, "Download falhou: %s", info.err);
+		nsx_dl_ack();
+		fbtk_set_text(gw->status, m);
+		nsx_toast(m);
+	}
+}
+
+/* ------------------------------------------------------------------ D-pad: saltar entre links */
+
+/*
+ * Navegacao espacial (como nos browsers da Wii/3DS): o D-pad leva o ponteiro
+ * ao link ou campo de formulario mais proximo na direccao carregada. Se nao
+ * houver nenhum perto, a pagina desloca-se como antes.
+ */
+struct nav_target { int x0, y0, x1, y1; const void *id; };
+
+#define NAV_MAX 600
+static struct nav_target g_nav[NAV_MAX];
+static int g_nav_n;
+
+static void nav_add(int x0, int y0, int x1, int y1, const void *id)
+{
+	/* junta pedacos do mesmo link na mesma zona (texto partido em linhas) */
+	for (int i = g_nav_n - 1; i >= 0 && i >= g_nav_n - 8; i--) {
+		struct nav_target *t = &g_nav[i];
+		/* so na mesma linha (as caixas sobrepoem-se na vertical) */
+		if (t->id == id && x0 <= t->x1 + 12 && x1 >= t->x0 - 12 &&
+		    y0 < t->y1 - 2 && y1 > t->y0 + 2) {
+			if (x0 < t->x0) t->x0 = x0;
+			if (y0 < t->y0) t->y0 = y0;
+			if (x1 > t->x1) t->x1 = x1;
+			if (y1 > t->y1) t->y1 = y1;
+			return;
+		}
+	}
+	if (g_nav_n >= NAV_MAX) return;
+	g_nav[g_nav_n].x0 = x0; g_nav[g_nav_n].y0 = y0;
+	g_nav[g_nav_n].x1 = x1; g_nav[g_nav_n].y1 = y1;
+	g_nav[g_nav_n].id = id;
+	g_nav_n++;
+}
+
+static void nav_collect(struct box *b, int ox, int oy, int depth)
+{
+	for (; b != NULL; b = b->next) {
+		int x = ox + b->x, y = oy + b->y;
+		bool target = false;
+		const void *id = NULL;
+
+		if (b->style && css_computed_visibility(b->style) == CSS_VISIBILITY_HIDDEN) {
+			/* invisivel, mas os filhos podem ser visiveis */
+		} else if (b->gadget != NULL && b->type != BOX_TEXT &&
+			   b->gadget->type != GADGET_HIDDEN) {
+			target = true;
+			id = b->gadget;
+		} else if (b->href != NULL &&
+			   (b->type == BOX_TEXT || b->type == BOX_INLINE_BLOCK ||
+			    b->type == BOX_BLOCK || b->object != NULL)) {
+			target = true;
+			id = b->href;
+		}
+		if (target && b->width > 0 && b->height > 0) {
+			int w = b->width + b->padding[LEFT] + b->padding[RIGHT];
+			int h = b->height + b->padding[TOP] + b->padding[BOTTOM];
+			nav_add(x, y, x + w, y + h, id);
+		}
+		if (depth < 200) {
+			/* caixas com scroll proprio (overflow) */
+			int ssx = b->scroll_x ? scrollbar_get_offset(b->scroll_x) : 0;
+			int ssy = b->scroll_y ? scrollbar_get_offset(b->scroll_y) : 0;
+			nav_collect(b->children, x - ssx, y - ssy, depth + 1);
+		}
+	}
+}
+
+/* direccao: 0 cima, 1 baixo, 2 esquerda, 3 direita */
+static void fb_nav(struct gui_window *gw, int dir)
+{
+	struct browser_widget_s *bwidget = fbtk_get_userpw(gw->browser);
+	struct hlcache_handle *h = browser_window_get_content(gw->bw);
+	struct box *root;
+	float scale = browser_window_get_scale(gw->bw);
+	int wx = fbtk_get_absx(gw->browser), wy = fbtk_get_absy(gw->browser);
+	int ww = fbtk_get_width(gw->browser), wh = fbtk_get_height(gw->browser);
+	int sx = bwidget->scrollx + bwidget->panx, sy = bwidget->scrolly + bwidget->pany;
+	int px, py, dpx, dpy, best = -1;
+	long best_score = 0;
+	const void *cur_id = NULL;
+	struct nav_target cur = { 0, 0, 0, 0, NULL };
+
+	if (h == NULL || content_get_type(h) != CONTENT_HTML ||
+	    (root = html_get_box_tree(h)) == NULL) {
+		goto scroll;
+	}
+	nsfb_xbox_get_pointer(&px, &py);
+	/* ponteiro em coordenadas do documento (sem zoom) */
+	dpx = (int)((px - wx + sx) / scale);
+	dpy = (int)((py - wy + sy) / scale);
+
+	g_nav_n = 0;
+	nav_collect(root, 0, 0, 0);
+
+	for (int i = 0; i < g_nav_n; i++) {
+		struct nav_target *t = &g_nav[i];
+		if (dpx >= t->x0 && dpx < t->x1 && dpy >= t->y0 && dpy < t->y1) {
+			cur = *t;
+			cur_id = t->id;
+			break;
+		}
+	}
+	if (cur_id == NULL) {
+		cur.x0 = cur.x1 = dpx;
+		cur.y0 = cur.y1 = dpy;
+		if (dir == 1) {
+			/* ponteiro fora de um link: "baixo" comeca no canto de cima,
+			 * como quem le a pagina (o primeiro link visivel) */
+			cur.y0 = cur.y1 = (int)(sy / scale) - 1;
+			dpx = (int)(sx / scale);
+		}
+	}
+
+	{
+		/* so procura ate uma "pagina" para la do que se ve, na direccao */
+		int vy0 = (int)(sy / scale), vy1 = (int)((sy + wh) / scale);
+		int pagey = (int)(wh / scale);
+
+		for (int i = 0; i < g_nav_n; i++) {
+			struct nav_target *t = &g_nav[i];
+			long primary, secondary, score;
+			if (t->id == cur_id && cur_id != NULL) continue;
+			switch (dir) {
+			case 0:
+				if (t->y1 > cur.y0 + 1 || t->y1 < vy0 - pagey / 2) continue;
+				primary = cur.y0 - t->y1;
+				secondary = t->x1 < dpx ? dpx - t->x1 : (t->x0 > dpx ? t->x0 - dpx : 0);
+				break;
+			case 1:
+				if (t->y0 < cur.y1 - 1 || t->y0 > vy1 + pagey / 2) continue;
+				primary = t->y0 - cur.y1;
+				secondary = t->x1 < dpx ? dpx - t->x1 : (t->x0 > dpx ? t->x0 - dpx : 0);
+				break;
+			case 2:
+				if (t->x1 > cur.x0 + 1 || t->y1 < vy0 || t->y0 > vy1) continue;
+				primary = cur.x0 - t->x1;
+				secondary = t->y1 < dpy ? dpy - t->y1 : (t->y0 > dpy ? t->y0 - dpy : 0);
+				secondary *= 3;
+				break;
+			default:
+				if (t->x0 < cur.x1 - 1 || t->y1 < vy0 || t->y0 > vy1) continue;
+				primary = t->x0 - cur.x1;
+				secondary = t->y1 < dpy ? dpy - t->y1 : (t->y0 > dpy ? t->y0 - dpy : 0);
+				secondary *= 3;
+				break;
+			}
+			score = primary + 2 * secondary;
+			if (best < 0 || score < best_score) {
+				best = i;
+				best_score = score;
+			}
+		}
+	}
+
+	if (best >= 0) {
+		struct nav_target *t = &g_nav[best];
+		int tx = t->x0 + ((t->x1 - t->x0) > 40 ? 16 : (t->x1 - t->x0) / 2);
+		int ty = (t->y0 + t->y1) / 2;
+		int scr_x, scr_y;
+
+		/* se o alvo nao estiver a vista, desloca a pagina ate ele */
+		scr_y = (int)(ty * scale) - sy;
+		if (scr_y < 8 || scr_y > wh - 8) {
+			int want = (int)(ty * scale) - (dir == 0 ? wh * 2 / 3 : wh / 3);
+			widget_scroll_y(gw, want < 0 ? 0 : want, true);
+		}
+		scr_x = (int)(tx * scale) - sx;
+		if (scr_x < 4 || scr_x > ww - 4) {
+			int want = (int)(tx * scale) - ww / 3;
+			widget_scroll_x(gw, want < 0 ? 0 : want, true);
+		}
+		sx = bwidget->scrollx + bwidget->panx;
+		sy = bwidget->scrolly + bwidget->pany;
+		scr_x = wx + (int)(tx * scale) - sx;
+		scr_y = wy + (int)(ty * scale) - sy;
+		if (scr_x < wx) scr_x = wx;
+		if (scr_x > wx + ww - 1) scr_x = wx + ww - 1;
+		if (scr_y < wy) scr_y = wy;
+		if (scr_y > wy + wh - 1) scr_y = wy + wh - 1;
+		nsfb_xbox_set_pointer(scr_x, scr_y);
+		return;
+	}
+
+scroll:
+	/* nenhum link nessa direccao: desloca a pagina */
+	switch (dir) {
+	case 0: widget_scroll_y(gw, -wh / 2, false); break;
+	case 1: widget_scroll_y(gw, wh / 2, false); break;
+	case 2: widget_scroll_x(gw, -ww / 3, false); break;
+	default: widget_scroll_x(gw, ww / 3, false); break;
+	}
+}
+
 /* ------------------------------------------------------------------ menu Start */
 
 static char g_find[256];        /* ultimo texto procurado na pagina */
@@ -682,7 +1061,7 @@ static void fb_save_choices(void)
 
 static void fb_settings_menu(struct gui_window *gw)
 {
-	enum { S_SEARCH, S_IMAGES, S_ADS, S_HD, S_KBD, S_CLEAR, S_COUNT };
+	enum { S_SEARCH, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_CLEAR, S_COUNT };
 	char lbl[S_COUNT][160];
 	const char *labels[S_COUNT];
 	int sel = 0, dir;
@@ -695,6 +1074,13 @@ static void fb_settings_menu(struct gui_window *gw)
 		if (prov && prov[0]) cur = prov;
 		else search_web_iterate_providers(-1, &cur);
 		snprintf(lbl[S_SEARCH], sizeof lbl[0], "Motor de pesquisa:  %s", cur ? cur : "?");
+		{
+			static const char *const uan[] = { "Normal (NetSurf)", "Site m\xc3\xb3vel", "Leve (telem\xc3\xb3vel antigo)", "Texto (Links)" };
+			int m = nsoption_int(xbox_ua_mode);
+			snprintf(lbl[S_UA], sizeof lbl[0], "Vers\xc3\xa3o dos sites:  %s", uan[(m >= 0 && m < NSX_UA_MODES) ? m : 0]);
+		}
+		snprintf(lbl[S_DPAD], sizeof lbl[0], "D-pad:  %s", nsoption_bool(xbox_dpad_links) ? "saltar entre links" : "deslocar a p\xc3\xa1gina");
+		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Pasta dos downloads:  %s", nsoption_charp(xbox_download_dir));
 		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Mostrar imagens:  %s", onoff(nsoption_bool(foreground_images)));
 		snprintf(lbl[S_ADS], sizeof lbl[0], "Bloquear an\xc3\xbancios:  %s", onoff(nsoption_bool(block_advertisements)));
 		snprintf(lbl[S_HD], sizeof lbl[0], "Ecr\xc3\xa3 720p (HD):  %s  (ao reiniciar)", onoff(nsoption_bool(xbox_hd)));
@@ -724,6 +1110,25 @@ static void fb_settings_menu(struct gui_window *gw)
 			}
 			break;
 		}
+		case S_UA: {
+			int m = nsoption_int(xbox_ua_mode) + (dir < 0 ? NSX_UA_MODES - 1 : 1);
+			nsoption_set_int(xbox_ua_mode, m % NSX_UA_MODES);
+			nsx_set_ua_mode(m % NSX_UA_MODES);
+			break;
+		}
+		case S_DPAD:
+			nsoption_set_bool(xbox_dpad_links, !nsoption_bool(xbox_dpad_links));
+			nsfb_xbox_set_dpad_links(nsoption_bool(xbox_dpad_links));
+			break;
+		case S_DLDIR: {
+			static const char *const dirs[] = { "E:\\Downloads", "F:\\Downloads", "G:\\Downloads", "D:\\Downloads" };
+			const char *cur = nsoption_charp(xbox_download_dir);
+			int at = 0;
+			for (int i = 0; i < 4; i++) if (cur && !strcasecmp(cur, dirs[i])) at = i;
+			at = (at + (dir < 0 ? 3 : 1)) % 4;
+			nsoption_set_charp(xbox_download_dir, strdup(dirs[at]));
+			break;
+		}
 		case S_IMAGES: {
 			bool v = !nsoption_bool(foreground_images);
 			nsoption_set_bool(foreground_images, v);
@@ -739,6 +1144,7 @@ static void fb_settings_menu(struct gui_window *gw)
 		case S_KBD:
 			nsoption_set_bool(xbox_kbd_us, !nsoption_bool(xbox_kbd_us));
 			nsx_kbd_set_layout(nsoption_bool(xbox_kbd_us) ? NSX_KBD_US : NSX_KBD_PT);
+	nsfb_xbox_set_dpad_links(nsoption_bool(xbox_dpad_links));
 			break;
 		case S_CLEAR: {
 			static const char *const yn[] = { "N\xc3\xa3o", "Sim, apagar ao reiniciar" };
@@ -761,8 +1167,10 @@ static void fb_settings_menu(struct gui_window *gw)
 
 static void fb_start_menu(struct gui_window *gw)
 {
-	enum { M_HOME, M_BOOKMARKS, M_HISTORY, M_FIND, M_FIND_NEXT, M_ZOOM, M_SETTINGS,
-	       M_HELP, M_EXIT, M_COUNT };
+	enum { M_HOME, M_BOOKMARKS, M_HISTORY, M_FIND, M_FIND_NEXT, M_ZOOM, M_DOWNLOAD,
+	       M_SETTINGS, M_HELP, M_EXIT, M_COUNT };
+	char dlabel[160];
+	struct nsx_dl_info dli;
 	char find_next[300];
 	char zoom[64];
 	const char *labels[M_COUNT];
@@ -781,6 +1189,14 @@ static void fb_start_menu(struct gui_window *gw)
 	snprintf(zoom, sizeof zoom, "Zoom: %d%%  (A repor 100%%)",
 		 (int)(browser_window_get_scale(gw->bw) * 100.0f + 0.5f));
 	ADD(M_ZOOM, zoom);
+	if (nsx_dl_poll(&dli) == NSX_DL_RUNNING) {
+		if (dli.total > 0)
+			snprintf(dlabel, sizeof dlabel, "Download %d%%: %.30s  (A cancelar)",
+				 (int)(dli.got * 100 / dli.total), dli.name);
+		else
+			snprintf(dlabel, sizeof dlabel, "Download: %.30s  (A cancelar)", dli.name);
+		ADD(M_DOWNLOAD, dlabel);
+	}
 	ADD(M_SETTINGS, "Defini\xc3\xa7\xc3\xb5" "es");
 	ADD(M_HELP, "Ajuda dos comandos");
 	ADD(M_EXIT, "Sair para o dashboard");
@@ -817,6 +1233,12 @@ static void fb_start_menu(struct gui_window *gw)
 				fb_zoom(gw, dir * 0.1f);
 			}
 			break;
+		case M_DOWNLOAD: {
+			static const char *const yn[] = { "N\xc3\xa3o", "Sim, cancelar" };
+			if (nsx_menu("Cancelar o download?", yn, 2, 0, NULL, NULL) == 1)
+				nsx_dl_cancel();
+			break;
+		}
 		case M_SETTINGS:
 			fb_settings_menu(gw);
 			break;
@@ -972,6 +1394,7 @@ static void fb_handle_xbox_input(void)
 	}
 
 	fb_handle_keyboard(gw);
+	fb_download_tick(gw);
 
 	while ((cmd = nsfb_xbox_pop_command()) != NSX_CMD_NONE) {
 		switch (cmd) {
@@ -994,6 +1417,10 @@ static void fb_handle_xbox_input(void)
 		case NSX_CMD_MENU:
 			fb_start_menu(gw);
 			break;
+		case NSX_CMD_NAV_UP:    fb_nav(gw, 0); break;
+		case NSX_CMD_NAV_DOWN:  fb_nav(gw, 1); break;
+		case NSX_CMD_NAV_LEFT:  fb_nav(gw, 2); break;
+		case NSX_CMD_NAV_RIGHT: fb_nav(gw, 3); break;
 		case NSX_CMD_HELP:
 			nsx_help_show();
 			break;
@@ -2686,6 +3113,7 @@ main(int argc, char** argv)
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
 		.llcache = filesystem_llcache_table,
+		.download = framebuffer_download_table,
 		.corewindow = framebuffer_core_window_table,
 #ifdef FB_USE_FREETYPE
 		.canvas = framebuffer_canvas_table,
@@ -2699,6 +3127,7 @@ main(int argc, char** argv)
 
 	/* a rede arranca ja em segundo plano (o DHCP pode demorar) */
 	nsx_net_start();
+	nsx_mount_drives();
 	/* teclado/rato USB: o controlador HID tem de entrar antes do SDL */
 	nsx_usbhid_init();
 
@@ -2755,6 +3184,8 @@ main(int argc, char** argv)
 	if (ret != NSERROR_OK) {
 		die("NetSurf failed to initialise");
 	}
+	/* versao dos sites (identificacao do browser), ver Definicoes */
+	nsx_set_ua_mode(nsoption_int(xbox_ua_mode));
 
 	/* Override, since we have no support for non-core SELECT menu */
 	nsoption_set_bool(core_select_menu, true);
