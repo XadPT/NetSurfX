@@ -369,3 +369,16 @@ int getpid(void)
 {
 	return 1;
 }
+
+/* ftruncate: usado pela cache em disco (fs_backing_store) */
+int ftruncate(int fd, off_t len)
+{
+	HANDLE h = fd_handle(fd);
+	DWORD cur;
+	if (h == NULL) return -1;
+	cur = SetFilePointer(h, 0, NULL, FILE_CURRENT);
+	if (SetFilePointer(h, (LONG)len, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) return -1;
+	if (!SetEndOfFile(h)) { SetFilePointer(h, (LONG)cur, NULL, FILE_BEGIN); return -1; }
+	SetFilePointer(h, (LONG)cur, NULL, FILE_BEGIN);
+	return 0;
+}

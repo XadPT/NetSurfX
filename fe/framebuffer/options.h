@@ -49,6 +49,8 @@ NSOPTION_INTEGER(xbox_overscan_x, 16)
 NSOPTION_INTEGER(xbox_overscan_y, 12)
 /** tentar 720p (precisa de cabo componente e 720p ligado no dashboard) */
 NSOPTION_BOOL(xbox_hd, false)
+/** teclado USB com disposicao americana (por omissao: portuguesa) */
+NSOPTION_BOOL(xbox_kbd_us, false)
 
 /***** font options *****/
 

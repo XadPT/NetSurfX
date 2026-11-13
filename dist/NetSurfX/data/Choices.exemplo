@@ -1,7 +1,9 @@
-# Opcoes do NetSurfX. Para usar: muda o nome deste ficheiro para "Choices"
-# (sem extensao), tira o # das linhas que queres e ajusta os valores.
+# Opcoes do NetSurfX. A maior parte muda-se no menu Start > Definicoes
+# (que grava o ficheiro data\Choices sozinho). Para as restantes: muda o
+# nome deste ficheiro para "Choices" (sem extensao), tira o # das linhas
+# que queres e ajusta os valores.
 #
-# Pagina inicial (botao Start):
+# Pagina inicial:
 #homepage_url:file:///D:/res/home.html
 #
 # Margem para o overscan da TV, em pixeis de cada lado (0 = ecra inteiro):
@@ -25,3 +27,10 @@
 #
 # Memoria para paginas e imagens em cache (bytes)
 #memory_cache_size:6291456
+#
+# Cache em disco (D:\cache), em bytes (0 = desligada) e dias a guardar
+#disc_cache_size:67108864
+#disc_cache_age:14
+#
+# Teclado USB com disposicao americana (1) em vez da portuguesa (0)
+#xbox_kbd_us:0

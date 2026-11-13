@@ -59,6 +59,10 @@
 #define MAX_PENDING_DATA   (1024 * 1024)
 #define MAX_CERT_DEPTH     10
 #define TLS_CACHE_SIZE     8
+#define POOL_MAX           6       /* ligacoes livres guardadas */
+#define SOCK_LIMIT         12      /* o lwIP tem 16 (ver tools/patch_nxdk.py) */
+#define KEEPALIVE_IDLE_MS  12000   /* muitos servidores fecham aos 15 s */
+#define KEEPALIVE_MAX_USES 100
 #define CA_FILE            "D:\\res\\cacert.pem"
 
 /* ---------------------------------------------------------------- estado global */
@@ -226,21 +230,89 @@ static int sock_wait(struct xf *f, int s, bool wr, int total_ms)
 	return 0;
 }
 
+/* ---------------------------------------------------------------- cache de DNS */
+
+/* O lwIP so guarda 4 nomes; uma pagina moderna usa facilmente 10 servidores. */
+#define DNS_CACHE_SIZE 32
+#define DNS_CACHE_TTL_MS (10 * 60 * 1000)
+
+struct dns_ent { char host[128]; struct in_addr addr; DWORD stamp; bool used; };
+static struct dns_ent g_dns[DNS_CACHE_SIZE];
+
+static bool dns_cache_get(const char *host, struct in_addr *out)
+{
+	bool ok = false;
+	DWORD now = GetTickCount();
+	EnterCriticalSection(&g_lock);
+	for (int i = 0; i < DNS_CACHE_SIZE; i++) {
+		if (g_dns[i].used && strcasecmp(g_dns[i].host, host) == 0) {
+			if (now - g_dns[i].stamp < DNS_CACHE_TTL_MS) {
+				*out = g_dns[i].addr;
+				ok = true;
+			} else {
+				g_dns[i].used = false;
+			}
+			break;
+		}
+	}
+	LeaveCriticalSection(&g_lock);
+	return ok;
+}
+
+static void dns_cache_put(const char *host, const struct in_addr *addr)
+{
+	int slot = -1, oldest = 0;
+	if (strlen(host) >= sizeof g_dns[0].host) return;
+	EnterCriticalSection(&g_lock);
+	for (int i = 0; i < DNS_CACHE_SIZE; i++) {
+		if (g_dns[i].used && strcasecmp(g_dns[i].host, host) == 0) { slot = i; break; }
+		if (!g_dns[i].used) { if (slot < 0) slot = i; }
+		else if (g_dns[i].stamp < g_dns[oldest].stamp) oldest = i;
+	}
+	if (slot < 0) slot = oldest;
+	snprintf(g_dns[slot].host, sizeof g_dns[slot].host, "%s", host);
+	g_dns[slot].addr = *addr;
+	g_dns[slot].stamp = GetTickCount();
+	g_dns[slot].used = true;
+	LeaveCriticalSection(&g_lock);
+}
+
+static void dns_cache_drop(const char *host)
+{
+	EnterCriticalSection(&g_lock);
+	for (int i = 0; i < DNS_CACHE_SIZE; i++)
+		if (g_dns[i].used && strcasecmp(g_dns[i].host, host) == 0)
+			g_dns[i].used = false;
+	LeaveCriticalSection(&g_lock);
+}
+
 static int connect_host(struct xf *f)
 {
 	char port[8];
 	struct addrinfo hints, *ai = NULL, *a;
 	int s = -1;
 
+	struct addrinfo cached;
+	struct sockaddr_in cached_sa;
+
 	snprintf(port, sizeof port, "%d", f->port);
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
-	if (lwip_getaddrinfo(f->host, port, &hints, &ai) != 0 || ai == NULL) {
+	if (dns_cache_get(f->host, &cached_sa.sin_addr)) {
+		/* endereco ja conhecido: evita perguntar outra vez ao DNS */
+		memset(&cached, 0, sizeof cached);
+		cached_sa.sin_family = AF_INET;
+		cached_sa.sin_port = htons((uint16_t)f->port);
+		cached.ai_family = AF_INET;
+		cached.ai_socktype = SOCK_STREAM;
+		cached.ai_addr = (struct sockaddr *)&cached_sa;
+		cached.ai_addrlen = sizeof cached_sa;
+	} else if (lwip_getaddrinfo(f->host, port, &hints, &ai) != 0 || ai == NULL) {
 		set_error(f, XR_ERROR, "Could not resolve the server name (DNS)");
 		return -1;
 	}
-	for (a = ai; a != NULL && !f->cancel; a = a->ai_next) {
+	for (a = ai ? ai : &cached; a != NULL && !f->cancel; a = a->ai_next) {
 		s = lwip_socket(a->ai_family, SOCK_STREAM, 0);
 		if (s < 0) continue;
 		/* ligacao nao bloqueante: assim respeitamos o tempo limite e o cancelamento */
@@ -260,7 +332,11 @@ static int connect_host(struct xf *f)
 		sock_close(s);
 		s = -1;
 	}
-	lwip_freeaddrinfo(ai);
+	if (s >= 0 && ai != NULL && a != NULL && a->ai_family == AF_INET)
+		dns_cache_put(f->host, &((struct sockaddr_in *)a->ai_addr)->sin_addr);
+	if (s < 0 && ai == NULL)
+		dns_cache_drop(f->host);    /* o endereco guardado deixou de servir */
+	if (ai) lwip_freeaddrinfo(ai);
 	if (s < 0 && !f->cancel)
 		set_error(f, XR_TIMEOUT, "Could not connect to the server");
 	return s;
@@ -358,7 +434,21 @@ static ssl_cert_err map_flags(uint32_t fl)
 	return SSL_CERT_ERR_UNKNOWN;
 }
 
-static void publish_chain(struct xf *f, struct vchain *vc, uint32_t result_flags)
+/* publica a cadeia uma so vez (a thread principal pode ja estar a usa-la) */
+static void set_chain(struct xf *f, struct cert_chain *chain)
+{
+	EnterCriticalSection(&g_lock);
+	if (!f->chain_ready) {
+		f->chain = chain;
+		f->chain_ready = true;
+		chain = NULL;
+	}
+	LeaveCriticalSection(&g_lock);
+	if (chain) cert_chain_free(chain);
+}
+
+static void publish_chain(struct xf *f, struct vchain *vc, uint32_t result_flags,
+			  struct cert_chain **keep)
 {
 	struct cert_chain *chain = NULL;
 	if (vc->depth > 0 && cert_chain_alloc(vc->depth, &chain) == NSERROR_OK) {
@@ -372,11 +462,10 @@ static void publish_chain(struct xf *f, struct vchain *vc, uint32_t result_flags
 		if (result_flags && chain->certs[0].err == SSL_CERT_ERR_OK)
 			chain->certs[0].err = map_flags(result_flags);
 	}
-	for (int i = 0; i < MAX_CERT_DEPTH; i++) free(vc->c[i].der);
-	EnterCriticalSection(&g_lock);
-	f->chain = chain;
-	f->chain_ready = true;
-	LeaveCriticalSection(&g_lock);
+	for (int i = 0; i < MAX_CERT_DEPTH; i++) { free(vc->c[i].der); vc->c[i].der = NULL; }
+	if (keep != NULL && chain != NULL)
+		cert_chain_dup(chain, keep);
+	set_chain(f, chain);
 }
 
 static void tls_cache_get(struct xf *f, mbedtls_ssl_context *ssl)
@@ -415,23 +504,167 @@ static void tls_cache_put(struct xf *f, mbedtls_ssl_context *ssl)
 	LeaveCriticalSection(&g_lock);
 }
 
-/* ---------------------------------------------------------------- leitura da resposta */
+/* ---------------------------------------------------------------- ligacoes (keep-alive) */
 
+/*
+ * Uma ligacao (socket + TLS opcional) pode servir varios pedidos seguidos ao
+ * mesmo servidor (HTTP/1.1 keep-alive). Poupa o DNS, o connect e sobretudo o
+ * handshake TLS, que no Pentium III de 733 MHz custa centenas de ms.
+ * As ligacoes livres ficam numa lista (g_pool) protegida por g_lock.
+ */
 struct conn {
-	struct xf *f;
+	struct conn *next;
+	char host[256];
+	int port;
+	bool https;
 	struct io io;
 	bool tls;
+	bool tls_inited;
 	mbedtls_ssl_context ssl;
 	mbedtls_ssl_config conf;
+	struct cert_chain *chain;    /* copia da cadeia (para reutilizacoes) */
+	DWORD idle_since;
+	int uses;
 };
+
+static struct conn *g_pool;
+static int g_pool_len;
+static int g_socks;                  /* sockets abertos por nos (g_lock) */
+
+static void conn_destroy(struct conn *c, bool graceful)
+{
+	if (c == NULL) return;
+	if (c->tls_inited) {
+		if (graceful) {
+			/* close_notify sem bloquear: so tentamos enviar */
+			struct xf dummy;
+			memset(&dummy, 0, sizeof dummy);
+			c->io.f = &dummy;
+			dummy.cancel = true;     /* bio_send desiste logo se bloquear */
+			mbedtls_ssl_close_notify(&c->ssl);
+		}
+		mbedtls_ssl_free(&c->ssl);
+		mbedtls_ssl_config_free(&c->conf);
+	}
+	if (c->io.s >= 0) {
+		sock_close(c->io.s);
+		EnterCriticalSection(&g_lock);
+		g_socks--;
+		LeaveCriticalSection(&g_lock);
+	}
+	if (c->chain) cert_chain_free(c->chain);
+	free(c);
+}
+
+/* uma ligacao livre ainda esta boa? (o servidor pode te-la fechado) */
+static bool conn_alive(struct conn *c)
+{
+	fd_set set;
+	struct timeval tv = { 0, 0 };
+	FD_ZERO(&set);
+	FD_SET(c->io.s, &set);
+	/* legivel numa ligacao parada = fechada (EOF) ou lixo: nao serve */
+	return lwip_select(c->io.s + 1, &set, NULL, NULL, &tv) == 0;
+}
+
+/* tira da lista uma ligacao livre para host:port; NULL se nao houver */
+static struct conn *pool_take(struct xf *f)
+{
+	struct conn *found = NULL, *dead = NULL;
+	struct conn **pp;
+	DWORD now = GetTickCount();
+
+	EnterCriticalSection(&g_lock);
+	for (pp = &g_pool; *pp; ) {
+		struct conn *c = *pp;
+		bool stale = (now - c->idle_since) > KEEPALIVE_IDLE_MS;
+		if (stale || (found == NULL && c->port == f->port && c->https == f->https &&
+			      strcasecmp(c->host, f->host) == 0)) {
+			*pp = c->next;
+			g_pool_len--;
+			if (stale) { c->next = dead; dead = c; }
+			else found = c;
+			continue;
+		}
+		pp = &c->next;
+	}
+	LeaveCriticalSection(&g_lock);
+
+	while (dead) { struct conn *n = dead->next; conn_destroy(dead, false); dead = n; }
+	if (found && !conn_alive(found)) {
+		conn_destroy(found, false);
+		found = NULL;
+	}
+	return found;
+}
+
+static void pool_put(struct conn *c)
+{
+	struct conn *evict = NULL;
+	c->idle_since = GetTickCount();
+	EnterCriticalSection(&g_lock);
+	c->next = g_pool;
+	g_pool = c;
+	g_pool_len++;
+	if (g_pool_len > POOL_MAX) {
+		/* tira a mais antiga (a ultima da lista) */
+		struct conn **pp = &g_pool;
+		while ((*pp)->next) pp = &(*pp)->next;
+		evict = *pp;
+		*pp = NULL;
+		g_pool_len--;
+	}
+	LeaveCriticalSection(&g_lock);
+	if (evict) conn_destroy(evict, false);
+}
+
+/* fecha uma ligacao livre (a mais antiga) para libertar um socket */
+static bool pool_evict_one(void)
+{
+	struct conn *evict = NULL, **pp;
+	EnterCriticalSection(&g_lock);
+	if (g_pool) {
+		pp = &g_pool;
+		while ((*pp)->next) pp = &(*pp)->next;
+		evict = *pp;
+		*pp = NULL;
+		g_pool_len--;
+	}
+	LeaveCriticalSection(&g_lock);
+	if (evict == NULL) return false;
+	conn_destroy(evict, false);
+	return true;
+}
+
+static void pool_clear(void)
+{
+	while (pool_evict_one()) ;
+}
+
+/* reserva um socket (o lwIP tem uma tabela fixa); espera se for preciso */
+static bool sock_reserve(struct xf *f)
+{
+	for (;;) {
+		EnterCriticalSection(&g_lock);
+		if (g_socks < SOCK_LIMIT) {
+			g_socks++;
+			LeaveCriticalSection(&g_lock);
+			return true;
+		}
+		LeaveCriticalSection(&g_lock);
+		if (pool_evict_one()) continue;
+		if (f->cancel) return false;
+		Sleep(20);
+	}
+}
 
 /* devolve bytes lidos, 0 no fim, <0 erro */
 static int conn_read(struct conn *c, unsigned char *b, size_t n)
 {
 	if (!c->tls) {
-		int r = sock_wait(c->f, c->io.s, false, IO_TIMEOUT_MS);
+		int r = sock_wait(c->io.f, c->io.s, false, IO_TIMEOUT_MS);
 		if (r == 0) return -1;
-		if (r < 0) { set_error(c->f, XR_TIMEOUT, "The server stopped responding"); return -1; }
+		if (r < 0) { set_error(c->io.f, XR_TIMEOUT, "The server stopped responding"); return -1; }
 		r = lwip_recv(c->io.s, b, n, 0);
 		return r < 0 ? -1 : r;
 	}
@@ -442,10 +675,10 @@ static int conn_read(struct conn *c, unsigned char *b, size_t n)
 			continue;
 		if (r == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY || r == 0) return 0;
 		if (r == MBEDTLS_ERR_SSL_TIMEOUT) {
-			set_error(c->f, XR_TIMEOUT, "The server stopped responding");
+			set_error(c->io.f, XR_TIMEOUT, "The server stopped responding");
 			return -1;
 		}
-		if (r == MBEDTLS_ERR_NET_RECV_FAILED && !c->f->cancel) return 0; /* fecho abrupto */
+		if (r == MBEDTLS_ERR_NET_RECV_FAILED && !c->io.f->cancel) return 0; /* fecho abrupto */
 		return r < 0 ? -1 : r;
 	}
 }
@@ -459,13 +692,95 @@ static bool conn_write(struct conn *c, const unsigned char *b, size_t n)
 			r = mbedtls_ssl_write(&c->ssl, b + sent, n - sent);
 			if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
 		} else {
-			if (sock_wait(c->f, c->io.s, true, IO_TIMEOUT_MS) != 1) return false;
+			if (sock_wait(c->io.f, c->io.s, true, IO_TIMEOUT_MS) != 1) return false;
 			r = lwip_send(c->io.s, b + sent, n - sent, 0);
 		}
 		if (r <= 0) return false;
 		sent += (size_t)r;
 	}
 	return true;
+}
+
+/* abre uma ligacao nova (DNS, connect, TLS); NULL com o erro ja marcado */
+static struct conn *conn_open(struct xf *f)
+{
+	struct conn *c = calloc(1, sizeof *c);
+	struct vchain vc;
+	int r;
+
+	if (c == NULL) { set_error(f, XR_ERROR, "Out of memory"); return NULL; }
+	memset(&vc, 0, sizeof vc);
+	c->io.s = -1;
+	c->io.f = f;
+	snprintf(c->host, sizeof c->host, "%s", f->host);
+	c->port = f->port;
+	c->https = f->https;
+
+	if (!sock_reserve(f)) { free(c); return NULL; }
+	c->io.s = connect_host(f);
+	if (c->io.s < 0) {
+		EnterCriticalSection(&g_lock);
+		g_socks--;
+		LeaveCriticalSection(&g_lock);
+		free(c);
+		return NULL;
+	}
+	if (!f->https) return c;
+
+	{
+		uint32_t vflags;
+		c->tls = true;
+		c->tls_inited = true;
+		mbedtls_ssl_init(&c->ssl);
+		mbedtls_ssl_config_init(&c->conf);
+		mbedtls_ssl_config_defaults(&c->conf, MBEDTLS_SSL_IS_CLIENT,
+					    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
+		/* verificamos nos proprios para poder mostrar a pagina de aviso do NetSurf */
+		mbedtls_ssl_conf_authmode(&c->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+		mbedtls_ssl_conf_ca_chain(&c->conf, &g_ca, NULL);
+		mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &g_drbg);
+		mbedtls_ssl_conf_verify(&c->conf, verify_cb, &vc);
+		if (f->downgrade_tls)
+			mbedtls_ssl_conf_max_tls_version(&c->conf, MBEDTLS_SSL_VERSION_TLS1_2);
+		if (mbedtls_ssl_setup(&c->ssl, &c->conf) != 0 ||
+		    mbedtls_ssl_set_hostname(&c->ssl, f->host) != 0) {
+			set_error(f, XR_SSL, "TLS setup failed");
+			goto fail;
+		}
+		mbedtls_ssl_set_bio(&c->ssl, &c->io, bio_send, bio_recv, NULL);
+		tls_cache_get(f, &c->ssl);
+		while ((r = mbedtls_ssl_handshake(&c->ssl)) != 0) {
+			if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
+			if (f->cancel) goto fail;
+			if (r == MBEDTLS_ERR_SSL_TIMEOUT) set_error(f, XR_TIMEOUT, "Secure connection timed out");
+			else {
+				char e[100];
+				snprintf(e, sizeof e, "Secure connection failed (TLS error -0x%04x)", -r);
+				set_error(f, XR_SSL, e);
+			}
+			publish_chain(f, &vc, 0, NULL);
+			goto fail;
+		}
+		/* a verificacao so acontece no handshake; vc deixa de existir */
+		mbedtls_ssl_conf_verify(&c->conf, NULL, NULL);
+		vflags = mbedtls_ssl_get_verify_result(&c->ssl);
+		/* so guardamos a cadeia (para reutilizar a ligacao) se estiver toda boa */
+		publish_chain(f, &vc, vflags, vflags == 0 ? &c->chain : NULL);
+		if (vflags != 0) {
+			if (!f->cert_override) {
+				set_error(f, XR_CERT, "Certificate verification failed");
+				goto fail;
+			}
+			c->uses = -1;   /* certificado aceite a mao: nunca reutilizar */
+		}
+		tls_cache_put(f, &c->ssl);
+	}
+	return c;
+
+fail:
+	for (int i = 0; i < MAX_CERT_DEPTH; i++) free(vc.c[i].der);
+	conn_destroy(c, false);
+	return NULL;
 }
 
 /* descodificacao do corpo: chunked e/ou gzip */
@@ -548,87 +863,63 @@ static bool body_feed(struct xf *f, struct body *bd, const unsigned char *p, siz
 	return true;
 }
 
-static void run_request(struct xf *f)
+/* a ligacao pode continuar aberta depois desta resposta? */
+static bool resp_keepalive(const char *hb, size_t hdr_bytes)
 {
-	struct conn c;
-	struct vchain vc;
+	bool http11 = strncmp(hb, "HTTP/1.1", 8) == 0;
+	bool ka = http11;
+	for (const char *line = hb; line < hb + hdr_bytes; ) {
+		const char *nl = memchr(line, '\n', (size_t)(hb + hdr_bytes - line));
+		char tmp[96];
+		if (nl == NULL) break;
+		size_t ll = (size_t)(nl - line);
+		if (ll >= sizeof tmp) ll = sizeof tmp - 1;
+		memcpy(tmp, line, ll);
+		tmp[ll] = 0;
+		for (char *t = tmp; *t; t++) if (*t >= 'A' && *t <= 'Z') *t += 32;
+		if (!strncmp(tmp, "connection:", 11)) {
+			if (strstr(tmp + 11, "close")) ka = false;
+			else if (strstr(tmp + 11, "keep-alive")) ka = true;
+		}
+		line = nl + 1;
+	}
+	return ka;
+}
+
+enum rr { RR_DONE, RR_RETRY };
+
+/* faz o pedido numa ligacao; RR_RETRY = a ligacao reutilizada estava morta
+ * antes de chegar qualquer resposta (pode tentar-se numa ligacao nova) */
+static enum rr run_on_conn(struct xf *f, struct conn *c, bool reused, bool *reusable)
+{
 	unsigned char buf[8192];
 	char *hb = NULL; size_t hlen = 0, hcap = 0;   /* cabecalhos ainda por terminar */
 	struct body bd;
 	int status = 0;
-	bool tls_inited = false;
+	bool keepalive = false;
+	enum rr ret = RR_DONE;
 
-	memset(&c, 0, sizeof c);
-	memset(&vc, 0, sizeof vc);
 	memset(&bd, 0, sizeof bd);
-	c.f = f;
-	c.io.f = f;
+	*reusable = false;
 
-	if (f->https && !tls_global_init()) {
-		set_error(f, XR_SSL, "Missing or invalid certificate file (res\\cacert.pem)");
-		return;
-	}
-
-	/* a rede pode ainda estar a arrancar (DHCP) */
-	if (!nsx_net_wait(30000)) {
-		set_error(f, XR_ERROR, "No network connection (check the cable and the router's DHCP)");
-		return;
-	}
-	c.io.s = connect_host(f);
-	if (c.io.s < 0) return;
-
-	if (f->https) {
-		uint32_t vflags;
-		int r;
-		c.tls = true;
-		tls_inited = true;
-		mbedtls_ssl_init(&c.ssl);
-		mbedtls_ssl_config_init(&c.conf);
-		mbedtls_ssl_config_defaults(&c.conf, MBEDTLS_SSL_IS_CLIENT,
-					    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
-		/* verificamos nos proprios para poder mostrar a pagina de aviso do NetSurf */
-		mbedtls_ssl_conf_authmode(&c.conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-		mbedtls_ssl_conf_ca_chain(&c.conf, &g_ca, NULL);
-		mbedtls_ssl_conf_rng(&c.conf, mbedtls_ctr_drbg_random, &g_drbg);
-		mbedtls_ssl_conf_verify(&c.conf, verify_cb, &vc);
-		if (f->downgrade_tls)
-			mbedtls_ssl_conf_max_tls_version(&c.conf, MBEDTLS_SSL_VERSION_TLS1_2);
-		if (mbedtls_ssl_setup(&c.ssl, &c.conf) != 0 ||
-		    mbedtls_ssl_set_hostname(&c.ssl, f->host) != 0) {
-			set_error(f, XR_SSL, "TLS setup failed");
-			goto out;
-		}
-		mbedtls_ssl_set_bio(&c.ssl, &c.io, bio_send, bio_recv, NULL);
-		tls_cache_get(f, &c.ssl);
-		while ((r = mbedtls_ssl_handshake(&c.ssl)) != 0) {
-			if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
-			if (f->cancel) goto out;
-			if (r == MBEDTLS_ERR_SSL_TIMEOUT) set_error(f, XR_TIMEOUT, "Secure connection timed out");
-			else {
-				char e[100];
-				snprintf(e, sizeof e, "Secure connection failed (TLS error -0x%04x)", -r);
-				set_error(f, XR_SSL, e);
-			}
-			publish_chain(f, &vc, 0);
-			goto out;
-		}
-		vflags = mbedtls_ssl_get_verify_result(&c.ssl);
-		publish_chain(f, &vc, vflags);
-		if (vflags != 0 && !f->cert_override) {
-			set_error(f, XR_CERT, "Certificate verification failed");
-			goto out;
-		}
-	}
-
-	if (!conn_write(&c, (unsigned char *)f->req, f->req_len)) {
+	if (!conn_write(c, (unsigned char *)f->req, f->req_len)) {
+		if (reused && !f->cancel) { ret = RR_RETRY; goto out; }
 		if (!f->cancel) set_error(f, XR_ERROR, "Could not send the request");
 		goto out;
 	}
 
 	/* ---- cabecalhos ---- */
 	for (;;) {
-		int n = conn_read(&c, buf, sizeof buf);
+		int n = conn_read(c, buf, sizeof buf);
 		if (n <= 0) {
+			if (reused && hlen == 0 && !f->cancel) {
+				/* o servidor fechou a ligacao parada: tenta de novo */
+				EnterCriticalSection(&g_lock);
+				if (f->result == XR_TIMEOUT) { f->result = XR_RUNNING; f->err[0] = 0; }
+				LeaveCriticalSection(&g_lock);
+				ret = RR_RETRY;
+				goto out;
+			}
 			if (!f->cancel) set_error(f, XR_ERROR, "The server closed the connection without a reply");
 			goto out;
 		}
@@ -654,6 +945,7 @@ static void run_request(struct xf *f)
 			if (hlen > 0) goto again;
 			continue;
 		}
+		keepalive = resp_keepalive(hb, hdr_bytes);
 		/* 1.a passagem: como vem o corpo? (a ordem dos cabecalhos e livre) */
 		bd.remaining = -1;
 		for (char *line = hb; line < hb + hdr_bytes; ) {
@@ -701,6 +993,8 @@ static void run_request(struct xf *f)
 		}
 		if (status == 204 || status == 304) bd.done = true;
 		if (bd.remaining == 0) bd.done = true;
+		/* sem tamanho nem chunked: o corpo acaba quando o servidor fechar */
+		if (!bd.done && !bd.chunked && bd.remaining < 0) keepalive = false;
 		/* o resto do que ja lemos e corpo */
 		if (!bd.done && hlen > hdr_bytes)
 			if (!body_feed(f, &bd, (unsigned char *)hb + hdr_bytes, hlen - hdr_bytes)) goto out;
@@ -709,7 +1003,7 @@ static void run_request(struct xf *f)
 
 	/* ---- corpo ---- */
 	while (!bd.done && !f->cancel) {
-		int n = conn_read(&c, buf, sizeof buf);
+		int n = conn_read(c, buf, sizeof buf);
 		if (n < 0) {
 			EnterCriticalSection(&g_lock);
 			bool have = f->result != XR_RUNNING;
@@ -718,25 +1012,73 @@ static void run_request(struct xf *f)
 			goto out;
 		}
 		if (n == 0) {
-			if (bd.chunked && !bd.done) { /* fim abrupto: aceitamos o que veio */ }
+			/* fim da ligacao: normal sem Content-Length; chunked cortado aceita-se */
+			keepalive = false;
 			break;
 		}
 		if (!body_feed(f, &bd, buf, (size_t)n)) goto out;
 	}
+	if (f->cancel) goto out;
 
-	if (c.tls) tls_cache_put(f, &c.ssl);
 	set_error(f, XR_OK, "");
+	*reusable = keepalive && bd.done && c->uses >= 0;
 
 out:
 	if (bd.gzip_ok) inflateEnd(&bd.zs);
 	free(hb);
-	if (tls_inited) {
-		if (!f->cancel && f->result == XR_OK) mbedtls_ssl_close_notify(&c.ssl);
-		mbedtls_ssl_free(&c.ssl);
-		mbedtls_ssl_config_free(&c.conf);
+	return ret;
+}
+
+static void run_request(struct xf *f)
+{
+	struct conn *c = NULL;
+	bool reused = false, reusable = false;
+
+	if (f->https && !tls_global_init()) {
+		set_error(f, XR_SSL, "Missing or invalid certificate file (res\\cacert.pem)");
+		return;
 	}
-	sock_close(c.io.s);
-	for (int i = 0; i < MAX_CERT_DEPTH; i++) free(vc.c[i].der);
+
+	/* a rede pode ainda estar a arrancar (DHCP) */
+	if (!nsx_net_wait(30000)) {
+		set_error(f, XR_ERROR, "No network connection (check the cable and the router's DHCP)");
+		return;
+	}
+
+	/* 1.a tentativa: ligacao livre (se houver); se estiver morta, uma nova */
+	for (int attempt = 0; attempt < 2 && !f->cancel; attempt++) {
+		c = attempt == 0 ? pool_take(f) : NULL;
+		reused = c != NULL;
+		if (c == NULL) {
+			c = conn_open(f);
+			if (c == NULL) return;
+		} else {
+			c->io.f = f;
+			if (f->https) {
+				/* a cadeia de certificados da ligacao, para o "info da pagina" */
+				struct cert_chain *dup = NULL;
+				if (c->chain) cert_chain_dup(c->chain, &dup);
+				set_chain(f, dup);
+			}
+		}
+		c->uses += (c->uses >= 0) ? 1 : 0;
+		if (run_on_conn(f, c, reused, &reusable) == RR_RETRY) {
+			conn_destroy(c, false);
+			c = NULL;
+			continue;
+		}
+		break;
+	}
+	if (c == NULL) {
+		if (!f->cancel) set_error(f, XR_ERROR, "The server closed the connection without a reply");
+		return;
+	}
+	if (reusable && !f->cancel && c->uses < KEEPALIVE_MAX_USES) {
+		c->io.f = NULL;
+		pool_put(c);
+	} else {
+		conn_destroy(c, !f->cancel);
+	}
 }
 
 static DWORD WINAPI worker(LPVOID arg)
@@ -859,7 +1201,7 @@ static void *xf_setup(struct fetch *parent, nsurl *url, bool only_2xx, bool down
 	else
 		req_add(&b, &bl, &bc, "%s %s HTTP/1.1\r\nHost: %s:%d\r\n", f->is_post ? "POST" : "GET", path, f->host, f->port);
 	req_add(&b, &bl, &bc, "User-Agent: %s\r\n", g_user_agent ? g_user_agent : "NetSurf");
-	req_add(&b, &bl, &bc, "Accept-Encoding: gzip\r\nConnection: close\r\n");
+	req_add(&b, &bl, &bc, "Accept-Encoding: gzip\r\nConnection: keep-alive\r\n");
 	if (nsoption_charp(accept_language) && nsoption_charp(accept_language)[0])
 		req_add(&b, &bl, &bc, "Accept-Language: %s, *;q=0.1\r\n", nsoption_charp(accept_language));
 	if (nsoption_charp(accept_charset) && nsoption_charp(accept_charset)[0])
@@ -1194,6 +1536,7 @@ static bool xf_initialise(lwc_string *scheme)
 static void xf_finalise(lwc_string *scheme)
 {
 	(void)scheme;
+	pool_clear();
 }
 
 static bool xf_acceptable(const nsurl *url)

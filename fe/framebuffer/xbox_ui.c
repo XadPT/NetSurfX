@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include <SDL.h>
 #include <windows.h>
@@ -29,6 +32,8 @@
 #include "netsurf/plotters.h"
 #include "netsurf/layout.h"
 #include "netsurf/keypress.h"
+#include "netsurf/url_db.h"
+#include "netsurf/content_type.h"
 
 #include "framebuffer/gui.h"
 #include "framebuffer/fbtk.h"
@@ -38,6 +43,7 @@
 
 #include "nsfb_xbox.h"
 #include "xbox_net.h"
+#include "xbox_kbd.h"
 
 extern fbtk_widget_t *fbtk;
 
@@ -130,6 +136,8 @@ static void ui_restore(void)
 void nsx_return_to_dashboard(void)
 {
 	char path[200] = "";
+
+	nsx_before_exit();
 	FILE *f = fopen("D:\\DASH.TXT", "r");
 	if (f) {
 		if (fgets(path, sizeof path, f)) {
@@ -161,7 +169,31 @@ void nsx_check_igr(void)
 /* ------------------------------------------------------------------ leitura do comando nos ecras modais */
 
 enum ui_btn { UB_NONE, UB_A, UB_B, UB_X, UB_Y, UB_START, UB_BACK, UB_WHITE, UB_BLACK,
-	      UB_UP, UB_DOWN, UB_LEFT, UB_RIGHT, UB_LT, UB_RT };
+	      UB_UP, UB_DOWN, UB_LEFT, UB_RIGHT, UB_LT, UB_RT, UB_KBD };
+
+/* teclado USB nos ecras modais: o teclado no ecra quer as teclas em bruto
+ * (UB_KBD); os menus recebem-nas traduzidas em botoes */
+static bool g_ui_raw_kbd;
+
+static enum ui_btn kbd_to_button(void)
+{
+	struct nsx_kev k;
+	while (nsx_kbd_poll(&k)) {
+		if (k.type != NSX_KEV_KEY) continue;
+		switch (k.key) {
+		case NSX_K_UP: return UB_UP;
+		case NSX_K_DOWN: return UB_DOWN;
+		case NSX_K_LEFT: return UB_LEFT;
+		case NSX_K_RIGHT: return UB_RIGHT;
+		case NSX_K_ENTER: return UB_A;
+		case NSX_K_ESC: case NSX_K_BACKSPACE: return UB_B;
+		case NSX_K_PAGEUP: return UB_LT;
+		case NSX_K_PAGEDOWN: return UB_RT;
+		default: break;
+		}
+	}
+	return UB_NONE;
+}
 
 /* espera por um botao (com repeticao no D-pad e no analogico esquerdo) */
 static enum ui_btn ui_wait_button(void)
@@ -171,6 +203,13 @@ static enum ui_btn ui_wait_button(void)
 	SDL_Event ev;
 	for (;;) {
 		nsx_check_igr();
+		nsx_usbhid_poll();
+		if (nsx_kbd_pending()) {
+			if (g_ui_raw_kbd) return UB_KBD;
+			enum ui_btn kb = kbd_to_button();
+			if (kb != UB_NONE) return kb;
+		}
+		{ int dx, dy, wh, mb; nsx_mouse_take(&dx, &dy, &wh, &mb); }   /* rato ignorado aqui */
 		while (SDL_PollEvent(&ev)) {
 			if (ev.type == SDL_CONTROLLERDEVICEADDED || ev.type == SDL_CONTROLLERDEVICEREMOVED) {
 				nsfb_xbox_handle_hotplug(&ev);
@@ -248,6 +287,7 @@ static void ui_drain(void)
 		Sleep(10);
 	}
 	while (SDL_PollEvent(&ev)) { }
+	nsx_kbd_flush();
 }
 
 /* ------------------------------------------------------------------ texto UTF-8 com cursor */
@@ -416,9 +456,40 @@ bool nsx_osk_run(const char *title, const char *initial, char *out, size_t outsz
 	eb_set(&e, initial);
 	nsfb_xbox_block_input(true);
 
+	g_ui_raw_kbd = true;
 	while (!done) {
 		osk_draw(title, &e, layer, row, col, multiline);
 		switch (ui_wait_button()) {
+		case UB_KBD: {
+			/* teclado USB: escreve directamente */
+			struct nsx_kev k;
+			while (!done && nsx_kbd_poll(&k)) {
+				if (k.type == NSX_KEV_CHAR) {
+					char u[8];
+					size_t n = utf8_from_ucs4(k.ucs4, u);
+					u[n] = 0;
+					eb_insert(&e, u);
+				} else if (k.type == NSX_KEV_KEY) {
+					switch (k.key) {
+					case NSX_K_ENTER:
+						if (multiline && !(k.mods & NSX_KM_CTRL)) eb_insert(&e, "\n");
+						else { ok = done = true; if (submit) *submit = true; }
+						break;
+					case NSX_K_ESC: done = true; break;
+					case NSX_K_BACKSPACE: eb_backspace(&e); break;
+					case NSX_K_DELETE:
+						if (e.cur < e.len) { eb_right(&e); eb_backspace(&e); }
+						break;
+					case NSX_K_LEFT: eb_left(&e); break;
+					case NSX_K_RIGHT: eb_right(&e); break;
+					case NSX_K_HOME: e.cur = 0; break;
+					case NSX_K_END: e.cur = e.len; break;
+					default: break;
+					}
+				}
+			}
+			break;
+		}
 		case UB_UP:    row = (row + OSK_ROWS) % (OSK_ROWS + 1);
 			if (row == OSK_ROWS) col = sk_first_col(sk_at_col(col));
 			break;
@@ -472,6 +543,7 @@ bool nsx_osk_run(const char *title, const char *initial, char *out, size_t outsz
 		}
 	}
 
+	g_ui_raw_kbd = false;
 	ui_drain();
 	nsfb_xbox_block_input(false);
 	ui_restore();
@@ -496,7 +568,7 @@ void nsx_help_show(void)
 		"X                     recarregar",
 		"Y                     escrever endere\xc3\xa7o",
 		"Preto                 guardar nos favoritos",
-		"Start                 p\xc3\xa1gina inicial e favoritos",
+		"Start                 menu: favoritos, hist\xc3\xb3rico, procurar, defini\xc3\xa7\xc3\xb5" "es",
 		"Cliques nos anal\xc3\xb3gicos  menos zoom / mais zoom",
 		"Back                  esta ajuda",
 		"L + R + Back + Preto  voltar ao dashboard",
@@ -630,4 +702,177 @@ void nsx_toast(const char *msg)
 	ui_present();
 	Sleep(700);
 	ui_restore();
+}
+
+/* ------------------------------------------------------------------ menu (lista) */
+
+/* lista vertical modal. Devolve o indice escolhido (A, ou esquerda/direita
+ * se dir != NULL: *dir = -1/+1, 0 para A) ou -1 se fechado (B/Start/Back). */
+int nsx_menu(const char *title, const char *const *labels, int n, int sel,
+	     const char *hint, int *dir)
+{
+	int W = nsfb_get_width_safe(), H = nsfb_get_height_safe();
+	plot_font_style_t ft, fs, fsel, fh;
+	int row_h, pw, ph, x0, y0, first = 0, visible;
+	int result = -1;
+
+	if (n <= 0) return -1;
+	if (sel < 0 || sel >= n) sel = 0;
+	if (dir) *dir = 0;
+	ui_style(&ft, 14, true, T_WHITE, 0x202020);
+	ui_style(&fs, 12, false, T_WHITE, 0x202020);
+	ui_style(&fsel, 12, true, T_WHITE, 0x10a010);
+	ui_style(&fh, 9, false, T_GREY, 0x202020);
+	row_h = H >= 700 ? 40 : 28;
+	pw = W >= 1200 ? 640 : W - 160;
+	visible = (H - 170) / row_h;
+	if (visible > n) visible = n;
+	ph = 70 + visible * row_h + 40;
+	x0 = (W - pw) / 2;
+	y0 = (H - ph) / 2;
+
+	nsfb_xbox_block_input(true);
+	for (;;) {
+		if (sel < first) first = sel;
+		if (sel >= first + visible) first = sel - visible + 1;
+		ui_fill(x0 - 2, y0 - 2, x0 + pw + 2, y0 + ph + 2, 0xff10a010);
+		ui_fill(x0, y0, x0 + pw, y0 + ph, 0xff202020);
+		ui_text(x0 + 24, y0 + 36, &ft, title, strlen(title));
+		for (int i = 0; i < visible; i++) {
+			int k = first + i;
+			int ry = y0 + 56 + i * row_h;
+			const char *l = labels[k];
+			if (k == sel) {
+				ui_fill(x0 + 12, ry, x0 + pw - 12, ry + row_h - 4, 0xff10a010);
+				ui_text(x0 + 28, ry + row_h - 12, &fsel, l, strlen(l));
+			} else {
+				ui_text(x0 + 28, ry + row_h - 12, &fs, l, strlen(l));
+			}
+		}
+		if (first > 0)
+			ui_text(x0 + pw - 40, y0 + 36, &fh, "\xe2\x96\xb2", 3);
+		if (first + visible < n)
+			ui_text(x0 + pw - 40, y0 + ph - 14, &fh, "\xe2\x96\xbc", 3);
+		if (hint)
+			ui_text(x0 + 24, y0 + ph - 14, &fh, hint, strlen(hint));
+		ui_present();
+
+		switch (ui_wait_button()) {
+		case UB_UP:    sel = (sel + n - 1) % n; break;
+		case UB_DOWN:  sel = (sel + 1) % n; break;
+		case UB_LT:    sel = sel - visible < 0 ? 0 : sel - visible; break;
+		case UB_RT:    sel = sel + visible >= n ? n - 1 : sel + visible; break;
+		case UB_LEFT:  if (dir) { *dir = -1; result = sel; goto done; } break;
+		case UB_RIGHT: if (dir) { *dir = 1; result = sel; goto done; } break;
+		case UB_A:     result = sel; goto done;
+		case UB_B: case UB_START: case UB_BACK: result = -1; goto done;
+		default: break;
+		}
+	}
+done:
+	ui_drain();
+	nsfb_xbox_block_input(false);
+	ui_restore();
+	return result;
+}
+
+/* ------------------------------------------------------------------ historico */
+
+#define HIST_HTML "D:\\data\\history.html"
+#define HIST_MAX 80
+
+struct hist_ent { nsurl *url; const char *title; time_t when; };
+static struct hist_ent *g_hist;
+static int g_hist_n, g_hist_cap;
+
+static bool hist_collect(nsurl *url, const struct url_data *d)
+{
+	const char *u = nsurl_access(url);
+	if (d->last_visit <= 0 || d->visits == 0) return true;
+	if (strncmp(u, "http", 4) != 0) return true;
+	if (d->type != CONTENT_HTML && d->type != CONTENT_TEXTPLAIN) return true;
+	if (g_hist_n == g_hist_cap) {
+		int nc = g_hist_cap ? g_hist_cap * 2 : 256;
+		struct hist_ent *ne = realloc(g_hist, nc * sizeof *ne);
+		if (ne == NULL) return false;
+		g_hist = ne;
+		g_hist_cap = nc;
+	}
+	g_hist[g_hist_n].url = nsurl_ref(url);
+	g_hist[g_hist_n].title = d->title;
+	g_hist[g_hist_n].when = d->last_visit;
+	g_hist_n++;
+	return true;
+}
+
+static int hist_cmp(const void *a, const void *b)
+{
+	const struct hist_ent *x = a, *y = b;
+	return (x->when < y->when) - (x->when > y->when);   /* mais recente primeiro */
+}
+
+/* escreve a pagina do historico (paginas visitadas, mais recentes primeiro) */
+const char *nsx_history_page(void)
+{
+	FILE *out;
+	int n;
+
+	g_hist_n = 0;
+	urldb_iterate_entries(hist_collect);
+	qsort(g_hist, g_hist_n, sizeof *g_hist, hist_cmp);
+	out = fopen(HIST_HTML, "w");
+	if (out != NULL) {
+		fputs("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>Hist\xc3\xb3rico</title>"
+		      "<link rel=\"stylesheet\" href=\"file:///D:/res/home.css\"></head><body>\n"
+		      "<h1>Hist\xc3\xb3rico</h1>\n<p><a href=\"file:///D:/res/home.html\">&larr; P\xc3\xa1gina inicial</a></p>\n<ul class=\"bm\">\n", out);
+		n = g_hist_n < HIST_MAX ? g_hist_n : HIST_MAX;
+		for (int i = 0; i < n; i++) {
+			char when[32] = "";
+			struct tm *tm = localtime(&g_hist[i].when);
+			if (tm) strftime(when, sizeof when, "%d/%m %H:%M", tm);
+			fputs("<li><a href=\"", out);
+			html_escape(out, nsurl_access(g_hist[i].url));
+			fputs("\">", out);
+			html_escape(out, (g_hist[i].title && g_hist[i].title[0]) ?
+				    g_hist[i].title : nsurl_access(g_hist[i].url));
+			fprintf(out, "</a> <span class=\"small\">%s</span></li>\n", when);
+		}
+		if (n == 0)
+			fputs("<li>Ainda n\xc3\xa3o h\xc3\xa1 p\xc3\xa1ginas no hist\xc3\xb3rico.</li>\n", out);
+		fputs("</ul>\n</body></html>\n", out);
+		fclose(out);
+	}
+	for (int i = 0; i < g_hist_n; i++) nsurl_unref(g_hist[i].url);
+	g_hist_n = 0;
+	return "file:///D:/data/history.html";
+}
+
+/* ------------------------------------------------------------------ apagar dados */
+
+static void rm_tree(const char *dir)
+{
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	char p[MAX_PATH];
+	if (d == NULL) return;
+	while ((e = readdir(d)) != NULL) {
+		struct stat st;
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+		snprintf(p, sizeof p, "%s\\%s", dir, e->d_name);
+		if (stat(p, &st) == 0 && S_ISDIR(st.st_mode))
+			rm_tree(p);
+		else
+			unlink(p);
+	}
+	closedir(d);
+	rmdir(dir);
+}
+
+/* apaga cookies, historico e cache (chamado no arranque, antes da cache abrir) */
+void nsx_clear_browsing_data(void)
+{
+	unlink("D:\\data\\Cookies");
+	unlink("D:\\data\\URLs");
+	unlink("D:\\data\\history.html");
+	rm_tree("D:\\cache");
 }

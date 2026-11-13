@@ -1,7 +1,20 @@
-NetSurfX v0.5 - browser NetSurf para a Xbox classica
+NetSurfX v0.6 - browser NetSurf para a Xbox classica
 =====================================================
 Base: NetSurf 3.11 com as melhorias do port para a Switch
 (etonedemid/netsurf-switch), adaptado a Xbox.
+
+NOVO NA v0.6
+  - Mais rapido: as ligacoes ficam abertas entre pedidos (keep-alive),
+    cache de DNS, copias de memoria optimizadas e cache em disco
+    (D:\cache, ate 64 MB): paginas e imagens ja vistas abrem do disco.
+  - Corrigido: so havia 4 ligacoes de rede ao mesmo tempo (paginas com
+    muitas imagens falhavam algumas). Agora sao 12.
+  - Corrigido: os cookies nao eram guardados ao sair pelo IGR.
+  - Menu Start: pagina inicial, favoritos, historico, procurar na pagina,
+    zoom, definicoes (motor de pesquisa, imagens, anuncios, 720p,
+    teclado, apagar dados) e sair.
+  - Historico das paginas visitadas (guardado entre sessoes).
+  - Teclado e rato USB (com adaptador para a porta do comando).
 
 NOVO NA v0.5
   - CSS moderno: grelhas (display:grid), flexbox corrigido, variaveis
@@ -26,7 +39,7 @@ COMANDO
   B ...................... voltar atras        Branco ... avancar
   X ...................... recarregar          Y ........ escrever endereco
   Preto .................. guardar nos favoritos
-  Start .................. pagina inicial (pesquisas e favoritos)
+  Start .................. menu (favoritos, historico, procurar, definicoes)
   Back ................... ajuda
   Cliques nos analogicos . menos zoom / mais zoom
   L + R + Back + Preto ... voltar ao dashboard (IGR)
@@ -38,9 +51,22 @@ TECLADO NO ECRA
   Preto limpar tudo, L/R mover o cursor, Start ir/enviar, Back cancelar.
   Na barra de endereco, palavras soltas fazem uma pesquisa.
 
+TECLADO E RATO USB (experimental)
+  Liga-os com um adaptador "porta do comando Xbox -> USB" (antes de
+  arrancar o NetSurfX). Disposicao portuguesa por omissao (muda no menu
+  Start > Definicoes). Comecar a escrever abre a barra de endereco.
+  Ctrl+L / F6 endereco     F5 recarregar        Esc parar
+  Alt+Esq / Alt+Dir        voltar / avancar     Backspace voltar
+  Ctrl+F procurar, F3 seguinte                  Ctrl+D favoritos
+  Ctrl+H historico         Ctrl+B favoritos     Ctrl + / - / 0 zoom
+  F10 menu                 F1 ajuda
+  Rato: botao esquerdo clica, direito abre o menu, roda desloca.
+
 FICHEIROS
   res\            recursos (nao mexer), certificados (cacert.pem) e fontes
-  data\           os teus dados: Cookies, favoritos (bookmarks.txt/.html)
+  data\           os teus dados: Cookies, historico (URLs), favoritos
+                  (bookmarks.txt/.html)
+  cache\          cache em disco (pode apagar-se a vontade)
   data\Choices    opcoes (ver data\Choices.exemplo)
   DEBUG.TXT       cria um ficheiro vazio com este nome ao lado do
                   default.xbe para gerar um registo em NETSURF.LOG

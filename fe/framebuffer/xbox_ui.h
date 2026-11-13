@@ -14,8 +14,13 @@ void nsx_help_show(void);
 void nsx_bookmarks_init(void);
 bool nsx_bookmark_add(struct browser_window *bw);
 void nsx_toast(const char *msg);
+int nsx_menu(const char *title, const char *const *labels, int n, int sel,
+	     const char *hint, int *dir);
+const char *nsx_history_page(void);
+void nsx_clear_browsing_data(void);
 void nsx_check_igr(void);
 void nsx_return_to_dashboard(void);
+void nsx_before_exit(void);   /* gui.c: cookies e cache */
 
 int nsfb_get_width_safe(void);
 int nsfb_get_height_safe(void);

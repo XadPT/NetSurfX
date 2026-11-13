@@ -22,4 +22,5 @@ int usleep(unsigned int us);
 int isatty(int fd);
 long sysconf(int name);
 int getpid(void);
+int ftruncate(int fd, off_t len);
 #endif

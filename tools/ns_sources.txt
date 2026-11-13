@@ -71,6 +71,7 @@ content/handlers/text/textplain.c
 content/hlcache.c
 content/llcache.c
 content/mimesniff.c
+content/fs_backing_store.c
 content/no_backing_store.c
 content/textsearch.c
 content/urldb.c
@@ -198,3 +199,6 @@ src/nsplat.c
 src/xbox_png.c
 src/xbox_iconv_gz.c
 src/xbox_woff.c
+src/xbox_fastmem.c
+src/xbox_kbd.c
+src/xbox_usbhid.c

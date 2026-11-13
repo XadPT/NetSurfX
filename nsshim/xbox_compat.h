@@ -29,6 +29,11 @@ char *strdup(const char *s);
 size_t strnlen(const char *s, size_t maxlen);
 char *strndup(const char *s, size_t n);
 int getpid(void);
+int ftruncate(int fd, off_t length);
+int close(int fd);
+ssize_t read(int fd, void *buf, size_t n);
+ssize_t write(int fd, const void *buf, size_t n);
+off_t lseek(int fd, off_t off, int whence);
 char *strtok_r(char *str, const char *delim, char **saveptr);
 
 #ifndef R_OK

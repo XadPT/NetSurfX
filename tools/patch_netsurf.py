@@ -96,4 +96,11 @@ if os.path.exists(p9):
          '#ifdef XBOX /* NSX wffetches */\n#define WEBFONT_MAX_FETCHES 48\n#else\n#define WEBFONT_MAX_FETCHES 32\n#endif\n',
          'NSX wffetches')
 
+# 10. llcache.c: se a cache em disco falhar (disco cheio, DVD, ficheiros
+#     estragados) o browser continua sem ela em vez de nao arrancar
+edit('netsurf/content/llcache.c',
+     '\treturn guit->llcache->initialise(&prm->store);\n}',
+     '\tif (guit->llcache->initialise(&prm->store) != NSERROR_OK) { /* NSX storeinit */\n\t\tNSLOG(llcache, ERROR, "Cache em disco indisponivel; a continuar sem ela");\n\t}\n\treturn NSERROR_OK;\n}',
+     'NSX storeinit')
+
 print('alterados:', ', '.join(sorted(set(done))) or 'nada (ja aplicado)')

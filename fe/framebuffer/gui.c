@@ -54,8 +54,11 @@
 #include "framebuffer/image_data.h"
 #include "framebuffer/font.h"
 #include "framebuffer/clipboard.h"
+#include "desktop/search.h"
 #include "framebuffer/corewindow.h"
 #include "html/webfont.h"
+#include "content/backing_store.h"
+#include "content/urldb.h"
 
 #ifdef FB_USE_FREETYPE
 extern struct gui_canvas_table *framebuffer_canvas_table;
@@ -64,6 +67,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "framebuffer/bitmap.h"
 #include "framebuffer/local_history.h"
 #include "framebuffer/xbox_ui.h"
+#include "xbox_kbd.h"
 #include "framebuffer/xbox_file.h"
 
 #include "nsfb_xbox.h"
@@ -536,6 +540,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	nsoption_set_int(memory_cache_size, 6 * 1024 * 1024);
 	nsoption_set_int(max_fetchers, 6);
 	nsoption_set_int(max_fetchers_per_host, 3);
+	/* cache em disco (D:\cache, ao lado do default.xbe): 64 MB chegam e
+	 * nao enchem o disco da Xbox; ver Choices para mudar */
+	nsoption_set_uint(disc_cache_size, 64 * 1024 * 1024);
+	nsoption_set_int(disc_cache_age, 14);
 	nsoption_set_int(max_cached_fetch_handles, 0);
 	nsoption_set_bool(target_blank, false);          /* uma so janela */
 	nsoption_set_bool(block_advertisements, true);
@@ -646,6 +654,301 @@ static void fb_zoom(struct gui_window *gw, float delta)
 static void widget_scroll_y(struct gui_window *gw, int y, bool abs);
 static void widget_scroll_x(struct gui_window *gw, int x, bool abs);
 
+/* ------------------------------------------------------------------ menu Start */
+
+static char g_find[256];        /* ultimo texto procurado na pagina */
+
+static void fb_find(struct gui_window *gw, bool next)
+{
+	char out[256];
+	bool submit;
+	if (!next || g_find[0] == 0) {
+		if (!nsx_osk_run("Procurar na p\xc3\xa1gina", g_find, out, sizeof out, false, &submit) ||
+		    out[0] == 0)
+			return;
+		snprintf(g_find, sizeof g_find, "%s", out);
+		browser_window_search_clear(gw->bw);
+	}
+	browser_window_search(gw->bw, gw, SEARCH_FLAG_FORWARDS | SEARCH_FLAG_SHOWALL, g_find);
+}
+
+static const char *onoff(bool v) { return v ? "Sim" : "N\xc3\xa3o"; }
+
+static void fb_save_choices(void)
+{
+	CreateDirectoryA("D:\\data", NULL);
+	nsoption_write("D:\\data\\Choices", NULL, NULL);
+}
+
+static void fb_settings_menu(struct gui_window *gw)
+{
+	enum { S_SEARCH, S_IMAGES, S_ADS, S_HD, S_KBD, S_CLEAR, S_COUNT };
+	char lbl[S_COUNT][160];
+	const char *labels[S_COUNT];
+	int sel = 0, dir;
+	bool changed = false;
+
+	for (;;) {
+		const char *prov = nsoption_charp(search_web_provider);
+		const char *cur = NULL;
+		/* nome do motor actual: o da opcao, ou o primeiro da lista */
+		if (prov && prov[0]) cur = prov;
+		else search_web_iterate_providers(-1, &cur);
+		snprintf(lbl[S_SEARCH], sizeof lbl[0], "Motor de pesquisa:  %s", cur ? cur : "?");
+		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Mostrar imagens:  %s", onoff(nsoption_bool(foreground_images)));
+		snprintf(lbl[S_ADS], sizeof lbl[0], "Bloquear an\xc3\xbancios:  %s", onoff(nsoption_bool(block_advertisements)));
+		snprintf(lbl[S_HD], sizeof lbl[0], "Ecr\xc3\xa3 720p (HD):  %s  (ao reiniciar)", onoff(nsoption_bool(xbox_hd)));
+		snprintf(lbl[S_KBD], sizeof lbl[0], "Teclado USB:  %s", nsoption_bool(xbox_kbd_us) ? "Americano (US)" : "Portugu\xc3\xaas");
+		snprintf(lbl[S_CLEAR], sizeof lbl[0], "Apagar hist\xc3\xb3rico, cookies e cache");
+		for (int i = 0; i < S_COUNT; i++) labels[i] = lbl[i];
+
+		sel = nsx_menu("Defini\xc3\xa7\xc3\xb5" "es", labels, S_COUNT, sel,
+			       "A / \xe2\x97\x80 \xe2\x96\xb6 mudar   B voltar", &dir);
+		if (sel < 0) break;
+		switch (sel) {
+		case S_SEARCH: {
+			/* passa ao motor seguinte (ou anterior) da lista */
+			const char *names[16], *nm;
+			int count = 0, at = 0;
+			ssize_t it = search_web_iterate_providers(-1, &nm);
+			while (it != -1 && count < 16) {
+				names[count] = nm;
+				if (cur && strcmp(nm, cur) == 0) at = count;
+				count++;
+				it = search_web_iterate_providers(it, &nm);
+			}
+			if (count > 0) {
+				at = (at + (dir < 0 ? count - 1 : 1)) % count;
+				nsoption_set_charp(search_web_provider, strdup(names[at]));
+				search_web_select_provider(names[at]);
+			}
+			break;
+		}
+		case S_IMAGES: {
+			bool v = !nsoption_bool(foreground_images);
+			nsoption_set_bool(foreground_images, v);
+			nsoption_set_bool(background_images, v);
+			break;
+		}
+		case S_ADS:
+			nsoption_set_bool(block_advertisements, !nsoption_bool(block_advertisements));
+			break;
+		case S_HD:
+			nsoption_set_bool(xbox_hd, !nsoption_bool(xbox_hd));
+			break;
+		case S_KBD:
+			nsoption_set_bool(xbox_kbd_us, !nsoption_bool(xbox_kbd_us));
+			nsx_kbd_set_layout(nsoption_bool(xbox_kbd_us) ? NSX_KBD_US : NSX_KBD_PT);
+			break;
+		case S_CLEAR: {
+			static const char *const yn[] = { "N\xc3\xa3o", "Sim, apagar ao reiniciar" };
+			if (nsx_menu("Apagar dados de navega\xc3\xa7\xc3\xa3o?", yn, 2, 0, NULL, NULL) == 1) {
+				FILE *f = fopen("D:\\data\\APAGAR.TXT", "w");
+				if (f) { fputs("1\n", f); fclose(f); }
+				nsx_toast("Os dados s\xc3\xa3o apagados no pr\xc3\xb3ximo arranque");
+			}
+			break;
+		}
+		}
+		changed = true;
+	}
+	if (changed) {
+		fb_save_choices();
+		/* imagens/anuncios: aplica-se ao recarregar */
+		browser_window_reload(gw->bw, false);
+	}
+}
+
+static void fb_start_menu(struct gui_window *gw)
+{
+	enum { M_HOME, M_BOOKMARKS, M_HISTORY, M_FIND, M_FIND_NEXT, M_ZOOM, M_SETTINGS,
+	       M_HELP, M_EXIT, M_COUNT };
+	char find_next[300];
+	char zoom[64];
+	const char *labels[M_COUNT];
+	int map[M_COUNT], n = 0, sel;
+	const char *home = nsoption_charp(homepage_url);
+
+#define ADD(id, txt) do { labels[n] = (txt); map[n] = (id); n++; } while (0)
+	ADD(M_HOME, "P\xc3\xa1gina inicial");
+	ADD(M_BOOKMARKS, "Favoritos");
+	ADD(M_HISTORY, "Hist\xc3\xb3rico");
+	ADD(M_FIND, "Procurar na p\xc3\xa1gina");
+	if (g_find[0]) {
+		snprintf(find_next, sizeof find_next, "Procurar seguinte: \xc2\xab%.40s\xc2\xbb", g_find);
+		ADD(M_FIND_NEXT, find_next);
+	}
+	snprintf(zoom, sizeof zoom, "Zoom: %d%%  (A repor 100%%)",
+		 (int)(browser_window_get_scale(gw->bw) * 100.0f + 0.5f));
+	ADD(M_ZOOM, zoom);
+	ADD(M_SETTINGS, "Defini\xc3\xa7\xc3\xb5" "es");
+	ADD(M_HELP, "Ajuda dos comandos");
+	ADD(M_EXIT, "Sair para o dashboard");
+#undef ADD
+
+	{
+		int dir;
+		sel = nsx_menu("NetSurfX", labels, n, 0, "A escolher   B fechar   \xe2\x97\x80 \xe2\x96\xb6 zoom", &dir);
+		if (sel < 0) return;
+		/* esquerda/direita so servem para o zoom */
+		if (dir != 0 && map[sel] != M_ZOOM)
+			return;
+		switch (map[sel]) {
+		case M_HOME:
+			fb_open_url(gw, (home && home[0]) ? home : NETSURF_HOMEPAGE);
+			break;
+		case M_BOOKMARKS:
+			fb_open_url(gw, "file:///D:/data/bookmarks.html");
+			break;
+		case M_HISTORY:
+			fb_open_url(gw, nsx_history_page());
+			break;
+		case M_FIND:
+			fb_find(gw, false);
+			break;
+		case M_FIND_NEXT:
+			fb_find(gw, true);
+			break;
+		case M_ZOOM:
+			if (dir == 0) {
+				browser_window_set_scale(gw->bw, 1.0f, true);
+				fbtk_set_text(gw->status, "Zoom 100%");
+			} else {
+				fb_zoom(gw, dir * 0.1f);
+			}
+			break;
+		case M_SETTINGS:
+			fb_settings_menu(gw);
+			break;
+		case M_HELP:
+			nsx_help_show();
+			break;
+		case M_EXIT: {
+			static const char *const yn[] = { "N\xc3\xa3o", "Sim, sair" };
+			if (nsx_menu("Sair do NetSurfX?", yn, 2, 0, NULL, NULL) == 1)
+				nsx_return_to_dashboard();
+			break;
+		}
+		}
+	}
+}
+
+
+/* ------------------------------------------------------------------ teclado USB */
+
+static void fb_url_osk(struct gui_window *gw, const char *initial)
+{
+	char out[2048];
+	bool submit;
+	if (nsx_osk_run("Endere\xc3\xa7o ou pesquisa", initial ? initial : "", out, sizeof out, false, &submit)) {
+		fbtk_set_text(gw->url, out);
+		fb_go_url(gw, out);
+	}
+}
+
+static void fb_handle_keyboard(struct gui_window *gw)
+{
+	struct nsx_kev k;
+	int page = (fbtk_get_height(gw->browser) * 9) / 10;
+
+	while (nsx_kbd_poll(&k)) {
+		struct browser_window *bw = gw->bw;
+		if (k.type == NSX_KEV_SHORTCUT) {
+			switch (k.ucs4) {
+			case 'l': fb_url_osk(gw, fbtk_get_text(gw->url)); break;
+			case 'r': browser_window_reload(bw, true); break;
+			case 'd':
+				nsx_toast(nsx_bookmark_add(bw) ? "Guardado nos favoritos" :
+					  "Esta p\xc3\xa1gina n\xc3\xa3o pode ser guardada");
+				break;
+			case 'f': fb_find(gw, false); break;
+			case 'g': fb_find(gw, true); break;
+			case 'h': fb_open_url(gw, nsx_history_page()); break;
+			case 'b': fb_open_url(gw, "file:///D:/data/bookmarks.html"); break;
+			case '+': fb_zoom(gw, 0.1f); break;
+			case '-': fb_zoom(gw, -0.1f); break;
+			case '0':
+				browser_window_set_scale(bw, 1.0f, true);
+				fbtk_set_text(gw->status, "Zoom 100%");
+				break;
+			default: break;
+			}
+			continue;
+		}
+		if (k.type == NSX_KEV_KEY) {
+			uint32_t nk = 0;
+			if (k.mods & NSX_KM_ALT) {
+				if (k.key == NSX_K_LEFT && browser_window_back_available(bw))
+					browser_window_history_back(bw, false);
+				else if (k.key == NSX_K_RIGHT && browser_window_forward_available(bw))
+					browser_window_history_forward(bw, false);
+				else if (k.key == NSX_K_HOME) {
+					const char *home = nsoption_charp(homepage_url);
+					fb_open_url(gw, (home && home[0]) ? home : NETSURF_HOMEPAGE);
+				}
+				fb_update_back_forward(gw);
+				continue;
+			}
+			switch (k.key) {
+			case NSX_K_F1: nsx_help_show(); continue;
+			case NSX_K_F3: fb_find(gw, true); continue;
+			case NSX_K_F5: browser_window_reload(bw, true); continue;
+			case NSX_K_F6: fb_url_osk(gw, fbtk_get_text(gw->url)); continue;
+			case NSX_K_F10: fb_start_menu(gw); continue;
+			case NSX_K_ESC: browser_window_stop(bw); continue;
+			case NSX_K_ENTER: nk = NS_KEY_NL; break;
+			case NSX_K_BACKSPACE: nk = NS_KEY_DELETE_LEFT; break;
+			case NSX_K_DELETE: nk = NS_KEY_DELETE_RIGHT; break;
+			case NSX_K_TAB: nk = (k.mods & NSX_KM_SHIFT) ? NS_KEY_SHIFT_TAB : NS_KEY_TAB; break;
+			case NSX_K_LEFT: nk = NS_KEY_LEFT; break;
+			case NSX_K_RIGHT: nk = NS_KEY_RIGHT; break;
+			case NSX_K_UP: nk = NS_KEY_UP; break;
+			case NSX_K_DOWN: nk = NS_KEY_DOWN; break;
+			case NSX_K_HOME: nk = NS_KEY_TEXT_START; break;
+			case NSX_K_END: nk = NS_KEY_TEXT_END; break;
+			case NSX_K_PAGEUP: nk = NS_KEY_PAGE_UP; break;
+			case NSX_K_PAGEDOWN: nk = NS_KEY_PAGE_DOWN; break;
+			default: continue;
+			}
+			if (browser_window_key_press(bw, nk))
+				continue;
+			/* a pagina nao quis a tecla: comportamento de browser */
+			switch (k.key) {
+			case NSX_K_BACKSPACE:
+				if (browser_window_back_available(bw))
+					browser_window_history_back(bw, false);
+				fb_update_back_forward(gw);
+				break;
+			case NSX_K_UP: widget_scroll_y(gw, -40, false); break;
+			case NSX_K_DOWN: widget_scroll_y(gw, 40, false); break;
+			case NSX_K_LEFT: widget_scroll_x(gw, -40, false); break;
+			case NSX_K_RIGHT: widget_scroll_x(gw, 40, false); break;
+			case NSX_K_PAGEUP: widget_scroll_y(gw, -page, false); break;
+			case NSX_K_PAGEDOWN: widget_scroll_y(gw, page, false); break;
+			case NSX_K_HOME: widget_scroll_y(gw, 0, true); break;
+			case NSX_K_END: widget_scroll_y(gw, 1 << 30, true); break;
+			default: break;
+			}
+			continue;
+		}
+		if (k.type == NSX_KEV_CHAR) {
+			if (browser_window_key_press(bw, k.ucs4))
+				continue;
+			if (k.ucs4 == ' ') {
+				widget_scroll_y(gw, (k.mods & NSX_KM_SHIFT) ? -page : page, false);
+				continue;
+			}
+			/* nenhum campo activo: comecar a escrever abre a barra de endereco */
+			{
+				char u[8];
+				size_t n = utf8_from_ucs4(k.ucs4, u);
+				u[n] = 0;
+				fb_url_osk(gw, u);
+			}
+		}
+	}
+}
+
 static void fb_handle_xbox_input(void)
 {
 	struct gui_window *gw = fb_current();
@@ -668,6 +971,8 @@ static void fb_handle_xbox_input(void)
 		}
 	}
 
+	fb_handle_keyboard(gw);
+
 	while ((cmd = nsfb_xbox_pop_command()) != NSX_CMD_NONE) {
 		switch (cmd) {
 		case NSX_CMD_BACK:
@@ -683,22 +988,12 @@ static void fb_handle_xbox_input(void)
 		case NSX_CMD_RELOAD:
 			browser_window_reload(gw->bw, true);
 			break;
-		case NSX_CMD_URL: {
-			char out[2048];
-			bool submit;
-			const char *cur = fbtk_get_text(gw->url);
-			if (nsx_osk_run("Endere\xc3\xa7o ou pesquisa", cur ? cur : "", out, sizeof out, false, &submit)) {
-				fbtk_set_text(gw->url, out);
-				fb_go_url(gw, out);
-			}
+		case NSX_CMD_URL:
+			fb_url_osk(gw, fbtk_get_text(gw->url) ? fbtk_get_text(gw->url) : "");
 			break;
-		}
-		case NSX_CMD_MENU: {
-			/* Start: pagina inicial (tem os favoritos e as pesquisas) */
-			const char *home = nsoption_charp(homepage_url);
-			fb_open_url(gw, (home && home[0]) ? home : NETSURF_HOMEPAGE);
+		case NSX_CMD_MENU:
+			fb_start_menu(gw);
 			break;
-		}
 		case NSX_CMD_HELP:
 			nsx_help_show();
 			break;
@@ -757,6 +1052,21 @@ static void framebuffer_run(void)
 
 		fbtk_redraw(fbtk);
 	}
+}
+
+/* chamado antes de sair para o dashboard (IGR ou fim normal):
+ * guarda os cookies e o indice da cache em disco */
+void nsx_before_exit(void)
+{
+	static bool done;
+	if (done) return;
+	done = true;
+	urldb_save_cookies(nsoption_charp(cookie_jar));
+	urldb_save("D:\\data\\URLs");
+	if (filesystem_llcache_table != NULL &&
+	    filesystem_llcache_table->finalise != NULL)
+		filesystem_llcache_table->finalise();
+	nslog_finalise();
 }
 
 static void gui_quit(void)
@@ -2375,6 +2685,7 @@ main(int argc, char** argv)
 		.utf8 = framebuffer_utf8_table,
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
+		.llcache = filesystem_llcache_table,
 		.corewindow = framebuffer_core_window_table,
 #ifdef FB_USE_FREETYPE
 		.canvas = framebuffer_canvas_table,
@@ -2388,6 +2699,8 @@ main(int argc, char** argv)
 
 	/* a rede arranca ja em segundo plano (o DHCP pode demorar) */
 	nsx_net_start();
+	/* teclado/rato USB: o controlador HID tem de entrar antes do SDL */
+	nsx_usbhid_init();
 
 	ret = netsurf_register(&framebuffer_table);
 	if (ret != NSERROR_OK) {
@@ -2418,6 +2731,7 @@ main(int argc, char** argv)
 	}
 	/* opcoes do utilizador (opcional): D:\data\Choices */
 	nsoption_read("D:\\data\\Choices", nsoptions);
+	nsx_kbd_set_layout(nsoption_bool(xbox_kbd_us) ? NSX_KBD_US : NSX_KBD_PT);
 
 	/* message init */
 	ret = messages_add_from_file("D:\\res\\Messages");
@@ -2426,7 +2740,18 @@ main(int argc, char** argv)
 	}
 
 	/* common initialisation */
-	ret = netsurf_init(NULL);
+	/* "Apagar dados de navegacao" (pedido no menu): faz-se aqui, no arranque,
+	 * antes de a cache em disco ser aberta */
+	{
+		FILE *fl = fopen("D:\\data\\APAGAR.TXT", "r");
+		if (fl != NULL) {
+			fclose(fl);
+			nsx_clear_browsing_data();
+			remove("D:\\data\\APAGAR.TXT");
+		}
+	}
+	/* cache em disco: as paginas e imagens ja vistas carregam do disco */
+	ret = netsurf_init(nsoption_uint(disc_cache_size) > 0 ? "D:\\cache" : NULL);
 	if (ret != NSERROR_OK) {
 		die("NetSurf failed to initialise");
 	}
@@ -2458,6 +2783,7 @@ main(int argc, char** argv)
 	search_web_init("D:\\res\\SearchEngines");
 	search_web_select_provider(nsoption_charp(search_web_provider));
 
+	urldb_load("D:\\data\\URLs");
 	urldb_load_cookies(nsoption_charp(cookie_file));
 
 	/* create an initial browser window */
@@ -2480,9 +2806,6 @@ main(int argc, char** argv)
 
 		browser_window_destroy(bw);
 	}
-
-	urldb_save_cookies(nsoption_charp(cookie_jar));
-	nslog_finalise();
 
 	/* nada de netsurf_exit(): vamos direitos ao dashboard */
 	nsx_return_to_dashboard();

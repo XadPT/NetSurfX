@@ -61,6 +61,9 @@ int __wrap_open(const char *p, int f, ...)
 }
 DIR *nsx_hopendir(const char *p) { char b[1024]; tpath(b, sizeof b, p); return opendir(b); }
 int nsx_hmkdir(const char *p, mode_t m) { char b[1024]; tpath(b, sizeof b, p); return mkdir(b, m); }
+int nsx_hrename(const char *a, const char *b) { char x[1024], y[1024]; tpath(x, sizeof x, a); tpath(y, sizeof y, b); return rename(x, y); }
+int nsx_hrmdir(const char *p) { char b[1024]; tpath(b, sizeof b, p); return rmdir(b); }
+int nsx_hremove(const char *p) { char b[1024]; tpath(b, sizeof b, p); return remove(b); }
 int nsx_hunlink(const char *p) { char b[1024]; tpath(b, sizeof b, p); return unlink(b); }
 char *nsx_hrealpath(const char *p, char *r) { if (r == NULL) return strdup(p); strcpy(r, p); return r; }
 char *__wrap_realpath(const char *p, char *r) { return nsx_hrealpath(p, r); }  /* como o NetSurf faz na Xbox */
@@ -226,7 +229,24 @@ static void run_script(void)
 		else if (!strcmp(a, "release")) { int x = btn_from(b); if (x >= 0) push_btn(x, false); }
 		else if (!strcmp(a, "tap")) { int x = btn_from(b); if (x >= 0 && npend < 16) { push_btn(x, true); pend[npend].t = now + 80; pend[npend].b = x; npend++; } }
 		else if (!strcmp(a, "ptr")) { extern void nsfb_xbox_set_pointer(int, int); int y = v; nsfb_xbox_set_pointer(atoi(b) - 16, y - 12); }
-		else if (!strcmp(a, "quit")) { fprintf(stderr, "[host] fim do guiao\n"); exit(0); }
+		else if (!strcmp(a, "key")) {
+			/* key <uso HID em hex> <modificadores>: carrega e larga */
+			extern void nsx_kbd_feed_report(const unsigned char *r, int len);
+			unsigned char r[8] = { 0 };
+			r[0] = (unsigned char)v; r[2] = (unsigned char)strtol(b, NULL, 16);
+			nsx_kbd_feed_report(r, 8);
+			memset(r, 0, 8);
+			nsx_kbd_feed_report(r, 8);
+		}
+		else if (!strcmp(a, "mouse")) {
+			/* mouse <dx,dy> <botoes> */
+			extern void nsx_mouse_feed_report(const unsigned char *r, int len);
+			int dx = 0, dy = 0; unsigned char r[4] = { 0 };
+			sscanf(b, "%d,%d", &dx, &dy);
+			r[0] = (unsigned char)v; r[1] = (unsigned char)(signed char)dx; r[2] = (unsigned char)(signed char)dy;
+			nsx_mouse_feed_report(r, 4);
+		}
+		else if (!strcmp(a, "quit")) { fprintf(stderr, "[host] fim do guiao\n"); extern void nsx_return_to_dashboard(void); nsx_return_to_dashboard(); }
 		next_t = -1;
 	}
 }
@@ -268,3 +288,7 @@ void nsx_net_start(void) {}
 int nsx_net_wait(int ms) { (void)ms; return 1; }
 int nsx_net_state(void) { return 1; }
 void nsx_net_describe(char *buf, size_t n) { snprintf(buf, n, "Rede: (teste no PC)"); }
+
+/* USB na Xbox: no PC os relatorios vem do guiao (comandos key/mouse) */
+void nsx_usbhid_init(void) { }
+void nsx_usbhid_poll(void) { }

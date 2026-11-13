@@ -12,3 +12,6 @@ nxdk-lib /out:$P/nslibs/lib/libexpat.lib $P/third_party/expat/obj/*.obj
 nxdk-cc $CF -I$P/third_party/expat -I$NSROOT/libdom/include -I$NSROOT/libdom/src -I$NSROOT/libdom/bindings -I$PFX/include -I$P/nsshim -I/home/claude/nxdk/lib/net/lwip/src/include \
   -c $NSROOT/libdom/bindings/xml/expat_xmlparser.c -o $P/nslibs/obj/libdom/bindings_xml_expat_xmlparser.obj
 nxdk-lib /out:$P/nslibs/lib/libdom.lib $P/nslibs/obj/libdom/*.obj
+# libnsutils: unistd.c (nsu_pread/nsu_pwrite, usados pela cache em disco)
+nxdk-cc $CF -I$P/nsshim -I$NSROOT/libnsutils/include -I$NSROOT/libnsutils/src -c $NSROOT/libnsutils/src/unistd.c -o $P/nslibs/obj/libnsutils/src_unistd.obj
+nxdk-lib /out:$P/nslibs/lib/libnsutils.lib $P/nslibs/obj/libnsutils/*.obj

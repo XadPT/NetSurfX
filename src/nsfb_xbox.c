@@ -37,6 +37,7 @@
 #include "cursor.h"
 
 #include "nsfb_xbox.h"
+#include "xbox_kbd.h"
 
 #define STICK_DEADZONE   7000
 #define TRIGGER_ON       20000
@@ -73,6 +74,7 @@ typedef struct {
 
 	int ox, oy;           /* margem de overscan */
 	bool input_blocked;   /* teclado no ecra aberto: o frontend le o comando directamente */
+	int mouse_buttons;    /* rato USB: botoes premidos */
 } xb_priv;
 
 static xb_priv *g_xb;     /* so existe uma superficie */
@@ -242,6 +244,40 @@ static void pump_sticks(nsfb_t *nsfb, xb_priv *p)
 		qkey(p, NSFB_EVENT_KEY_UP, p->held_key);
 		p->held_last = now;
 	}
+}
+
+
+/* ---------------------------------------------------------------- rato e teclado USB */
+
+static void pump_usb(nsfb_t *nsfb, xb_priv *p)
+{
+	int dx, dy, wheel, b;
+
+	nsx_usbhid_poll();
+	if (!nsx_mouse_take(&dx, &dy, &wheel, &b)) return;
+	if (p->input_blocked) { p->mouse_buttons = b; return; }
+
+	if (dx || dy) {
+		float scale = nsfb->width / 640.0f;
+		p->px += dx * 1.5f * scale;
+		p->py += dy * 1.5f * scale;
+		if (p->px < 0) p->px = 0;
+		if (p->py < 0) p->py = 0;
+		if (p->px > nsfb->width - 1) p->px = (float)(nsfb->width - 1);
+		if (p->py > nsfb->height - 1) p->py = (float)(nsfb->height - 1);
+		qmove(p, (int)p->px, (int)p->py);
+	}
+	/* botao esquerdo = A (clique); direito = menu */
+	if ((b & 1) != (p->mouse_buttons & 1)) {
+		qmove(p, (int)p->px, (int)p->py);
+		qkey(p, (b & 1) ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP, NSFB_KEY_MOUSE_1);
+	}
+	if ((b & 2) && !(p->mouse_buttons & 2))
+		cmdpush(p, NSX_CMD_MENU);
+	p->mouse_buttons = b;
+	/* roda: 3 linhas por "clique" */
+	if (wheel)
+		p->scroll_y -= wheel * 60.0f;
 }
 
 static bool stick_active(xb_priv *p)
@@ -467,9 +503,11 @@ static bool xb_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
 	for (;;) {
 		while (SDL_PollEvent(&ev)) handle_sdl(p, &ev);
 		pump_sticks(nsfb, p);
+		pump_usb(nsfb, p);
 		if (qpop(p, event)) return true;
-		/* comandos e scroll sao lidos pelo frontend: acorda-o */
-		if (p->cn > 0 || fabsf(p->scroll_x) >= 1.0f || fabsf(p->scroll_y) >= 1.0f) {
+		/* comandos, teclado e scroll sao lidos pelo frontend: acorda-o */
+		if (p->cn > 0 || fabsf(p->scroll_x) >= 1.0f || fabsf(p->scroll_y) >= 1.0f ||
+		    (!p->input_blocked && nsx_kbd_pending())) {
 			event->type = NSFB_EVENT_CONTROL;
 			event->value.controlcode = NSFB_CONTROL_TIMEOUT;
 			return true;
