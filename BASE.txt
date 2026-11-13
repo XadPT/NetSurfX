@@ -1,0 +1,1 @@
+Base NetSurf: etonedemid/netsurf-switch @ 3dabe65c245ab29a22f243e88d407caf2c09b5c2 + tools/patch_netsurf.py

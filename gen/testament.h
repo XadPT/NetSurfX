@@ -8,16 +8,16 @@
  */
 
 #ifndef NETSURF_REVISION_TESTAMENT
-#define NETSURF_REVISION_TESTAMENT "32b2b3f0388f177153e0523ee06fd073"
+#define NETSURF_REVISION_TESTAMENT "25775ea8799c9ab18836a69beea21a63"
 
 /* Revision testament checksum:
- * MD5:32b2b3f0388f177153e0523ee06fd073
+ * MD5:25775ea8799c9ab18836a69beea21a63
  */
 
 /* Revision testament: */
 #define USERNAME "root"
 #define GECOS "root"
-#define WT_ROOT "/home/claude/ns-src/netsurf-all-3.11/netsurf/"
+#define WT_ROOT "/home/claude/ns2/netsurf/"
 #define WT_HOSTNAME "vm"
 #define WT_COMPILEDATE "12.11.2026"
 #define WT_BRANCHPATH "tarball"

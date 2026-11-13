@@ -22,6 +22,10 @@
 #include <ft2build.h>
 #include FT_CACHE_H
 
+#include <ctype.h>
+#include <strings.h>
+#include <libwapcaplet/libwapcaplet.h>
+
 #include "netsurf/inttypes.h"
 #include "utils/filepath.h"
 #include "utils/utf8.h"
@@ -53,6 +57,8 @@ typedef struct fb_faceid_s {
         char *fontfile; /* path to font */
         int index; /* index of font */
         int cidx; /* character map index for unicode */
+        const uint8_t *mem; /* in-memory font (webfont); overrides fontfile */
+        size_t mem_len;
 } fb_faceid_t;
 
 
@@ -75,6 +81,221 @@ enum fb_face_e {
 
 static fb_faceid_t *fb_faces[FB_FACE_COUNT];
 
+/*
+ * Family-name handling.
+ *
+ * The plot style carries the actual CSS font-family names; map well-known
+ * names onto our generic faces, and registered webfonts (in-memory faces)
+ * onto their own freetype faces. Webfont *fetching* is not wired up yet;
+ * fb_font_register_webfont() is the entry point for it.
+ */
+
+#if defined(XBOX) || defined(NSX_SMALL_WEBFONTS)
+/* 64 MB de RAM: limites apertados para as fontes web */
+#define FB_WEBFONT_MAX 10
+#define FB_WEBFONT_MAX_ONE (1536 * 1024)
+#define FB_WEBFONT_MAX_TOTAL (4 * 1024 * 1024)
+#else
+#define FB_WEBFONT_MAX 16
+#define FB_WEBFONT_MAX_ONE (8 * 1024 * 1024)
+#define FB_WEBFONT_MAX_TOTAL (64 * 1024 * 1024)
+#endif
+#include "xbox_woff.h"
+static size_t fb_webfont_bytes;
+
+struct fb_webfont {
+	char *family; /* lowercased family name */
+	fb_faceid_t *face;
+};
+
+static struct fb_webfont fb_webfonts[FB_WEBFONT_MAX];
+static int fb_webfont_count;
+
+struct fb_family_alias {
+	const char *name;
+	plot_font_generic_family_t family;
+};
+
+static const struct fb_family_alias fb_family_aliases[] = {
+	{ "arial", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "helvetica", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "helvetica neue", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "verdana", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "tahoma", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "segoe ui", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "roboto", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "open sans", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "lato", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "noto sans", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "system-ui", PLOT_FONT_FAMILY_SANS_SERIF },
+	{ "times", PLOT_FONT_FAMILY_SERIF },
+	{ "times new roman", PLOT_FONT_FAMILY_SERIF },
+	{ "georgia", PLOT_FONT_FAMILY_SERIF },
+	{ "garamond", PLOT_FONT_FAMILY_SERIF },
+	{ "palatino", PLOT_FONT_FAMILY_SERIF },
+	{ "courier", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "courier new", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "consolas", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "menlo", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "monaco", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "source code pro", PLOT_FONT_FAMILY_MONOSPACE },
+	{ "comic sans ms", PLOT_FONT_FAMILY_CURSIVE },
+	{ "impact", PLOT_FONT_FAMILY_FANTASY },
+	{ NULL, 0 }
+};
+
+static bool
+fb_name_matches(const lwc_string *lwcname, const char *name)
+{
+	size_t len = lwc_string_length((lwc_string *)lwcname);
+	const char *data = lwc_string_data((lwc_string *)lwcname);
+
+	return (strlen(name) == len) && (strncasecmp(data, name, len) == 0);
+}
+
+/* look up a registered webfont face for any of the style's families */
+static fb_faceid_t *
+fb_webfont_lookup(lwc_string * const *families)
+{
+	int i, f;
+
+	for (f = 0; families[f] != NULL; f++) {
+		for (i = 0; i < fb_webfont_count; i++) {
+			if (fb_name_matches(families[f],
+					    fb_webfonts[i].family)) {
+				return fb_webfonts[i].face;
+			}
+		}
+	}
+	return NULL;
+}
+
+/* map family names to a generic family via the alias table */
+static plot_font_generic_family_t
+fb_alias_lookup(lwc_string * const *families,
+		plot_font_generic_family_t fallback)
+{
+	int i, f;
+
+	for (f = 0; families[f] != NULL; f++) {
+		for (i = 0; fb_family_aliases[i].name != NULL; i++) {
+			if (fb_name_matches(families[f],
+					    fb_family_aliases[i].name)) {
+				return fb_family_aliases[i].family;
+			}
+		}
+	}
+	return fallback;
+}
+
+/* NSX: liberta a fonte web mais antiga (memoria limitada na Xbox) */
+static void fb_webfont_evict_oldest(void)
+{
+	fb_faceid_t *f;
+	int i;
+
+	if (fb_webfont_count == 0)
+		return;
+	f = fb_webfonts[0].face;
+	if (ft_cmanager != NULL)
+		FTC_Manager_RemoveFaceID(ft_cmanager, (FTC_FaceID)f);
+	NSLOG(netsurf, INFO, "webfont '%s' libertada (%zu bytes)",
+	      fb_webfonts[0].family, f->mem_len);
+	fb_webfont_bytes -= f->mem_len;
+	free((void *)f->mem);
+	free(f->fontfile);
+	free(f);
+	free(fb_webfonts[0].family);
+	for (i = 1; i < fb_webfont_count; i++)
+		fb_webfonts[i - 1] = fb_webfonts[i];
+	fb_webfont_count--;
+}
+
+/* exported interface: register an in-memory font under a family name.
+ * Takes ownership of nothing; data must stay valid for the process life.
+ * Returns false (caller keeps ownership of data) if the registry is
+ * full, the family is already registered, or freetype cannot open the
+ * blob (e.g. a woff2 file; only sfnt and woff are supported). */
+bool
+fb_font_register_webfont(const char *family,
+			 const uint8_t *data, size_t data_len)
+{
+	fb_faceid_t *newf;
+	char *family_lc;
+	FT_Face probe;
+	size_t i;
+
+	if (library == NULL)
+		return false;
+
+	/* first registration of a family wins */
+	for (i = 0; i < (size_t)fb_webfont_count; i++) {
+		if (strcasecmp(fb_webfonts[i].family, family) == 0)
+			return false;
+	}
+
+	/* WOFF 1.0: o FreeType 2.4 nao o le, converter para sfnt (TTF/OTF) */
+	if (nsx_is_woff(data, data_len)) {
+		uint8_t *sfnt;
+		size_t sfnt_len;
+		if (!nsx_woff_to_sfnt(data, data_len, FB_WEBFONT_MAX_ONE,
+				      &sfnt, &sfnt_len)) {
+			NSLOG(netsurf, INFO, "webfont '%s': WOFF invalido",
+			      family);
+			return false;
+		}
+		if (!fb_font_register_webfont(family, sfnt, sfnt_len)) {
+			free(sfnt);
+			return false;
+		}
+		/* registado: a copia WOFF original ja nao e precisa */
+		free((void *)data);
+		return true;
+	}
+
+	if (data_len > FB_WEBFONT_MAX_ONE)
+		return false;
+
+	/* probe the blob so a broken font cannot enter the registry */
+	if (FT_New_Memory_Face(library, data, data_len, 0, &probe) != 0) {
+		NSLOG(netsurf, INFO,
+		      "webfont family '%s' unusable (%zu bytes)",
+		      family, data_len);
+		return false;
+	}
+	FT_Done_Face(probe);
+
+	/* sem espaco: libertar as fontes mais antigas (paginas anteriores) */
+	while (fb_webfont_count > 0 &&
+	       (fb_webfont_count >= FB_WEBFONT_MAX ||
+		fb_webfont_bytes + data_len > FB_WEBFONT_MAX_TOTAL))
+		fb_webfont_evict_oldest();
+
+	family_lc = strdup(family);
+	if (family_lc == NULL)
+		return false;
+	for (i = 0; family_lc[i]; i++)
+		family_lc[i] = tolower((unsigned char)family_lc[i]);
+
+	newf = calloc(1, sizeof(fb_faceid_t));
+	if (newf == NULL) {
+		free(family_lc);
+		return false;
+	}
+	newf->mem = data;
+	newf->mem_len = data_len;
+	newf->fontfile = strdup(family); /* for diagnostics only */
+
+	fb_webfonts[fb_webfont_count].family = family_lc;
+	fb_webfonts[fb_webfont_count].face = newf;
+	fb_webfont_count++;
+	fb_webfont_bytes += data_len;
+
+	NSLOG(netsurf, INFO, "registered webfont family '%s' (%zu bytes)",
+	      family, data_len);
+	return true;
+}
+
 /**
  * map cache manager handle to face id
  */
@@ -88,7 +309,14 @@ ft_face_requester(FTC_FaceID face_id,
         fb_faceid_t *fb_face = (fb_faceid_t *)face_id;
         int cidx;
 
-        error = FT_New_Face(library, fb_face->fontfile, fb_face->index, face); 
+        if (fb_face->mem != NULL) {
+                error = FT_New_Memory_Face(library, fb_face->mem,
+                                           fb_face->mem_len,
+                                           fb_face->index, face);
+        } else {
+                error = FT_New_Face(library, fb_face->fontfile,
+                                    fb_face->index, face);
+        }
         if (error) {
                 NSLOG(netsurf, INFO, "Could not find font (code %d)", error);
         } else {
@@ -352,8 +580,24 @@ bool fb_font_finalise(void)
 static void fb_fill_scalar(const plot_font_style_t *fstyle, FTC_Scaler srec)
 {
         int selected_face = FB_FACE_DEFAULT;
+        plot_font_generic_family_t family = fstyle->family;
 
-	switch (fstyle->family) {
+	if (fstyle->families != NULL) {
+		/* registered webfont face wins outright */
+		fb_faceid_t *wf = fb_webfont_lookup(fstyle->families);
+		if (wf != NULL) {
+			srec->face_id = (FTC_FaceID)wf;
+			srec->width = srec->height =
+				(fstyle->size * 64) / PLOT_STYLE_SCALE;
+			srec->pixel = 0;
+			srec->x_res = srec->y_res = browser_get_dpi();
+			return;
+		}
+		/* otherwise honour well-known family names */
+		family = fb_alias_lookup(fstyle->families, family);
+	}
+
+	switch (family) {
                                 
 	case PLOT_FONT_FAMILY_SERIF:
 		if (fstyle->weight >= BOLD_WEIGHT) {
@@ -576,3 +820,78 @@ struct gui_utf8_table *framebuffer_utf8_table = NULL;
  * c-basic-offset:8
  * End:
  */
+
+/* ------------------------------------------------------------------ */
+/* Canvas text                                                        */
+/* ------------------------------------------------------------------ */
+
+#include "netsurf/canvas.h"
+
+static bool fb_canvas_fill_text(uint8_t *px, int w, int h, size_t stride,
+		const struct plot_font_style *fs, int x, int y,
+		const char *text, size_t len, uint32_t colour, float alpha,
+		const int clip[4])
+{
+	size_t nxt = 0;
+	int cr = colour & 0xff, cg = (colour >> 8) & 0xff;
+	int cb = (colour >> 16) & 0xff;
+	int cx0 = clip[0] > 0 ? clip[0] : 0, cy0 = clip[1] > 0 ? clip[1] : 0;
+	int cx1 = clip[2] < w ? clip[2] : w, cy1 = clip[3] < h ? clip[3] : h;
+
+	while (nxt < len) {
+		uint32_t ucs4 = utf8_to_ucs4(text + nxt, len - nxt);
+		FT_Glyph glyph;
+
+		nxt = utf8_next(text, len, nxt);
+		glyph = fb_getglyph(fs, ucs4);
+		if (glyph == NULL)
+			continue;
+		if (glyph->format == FT_GLYPH_FORMAT_BITMAP) {
+			FT_BitmapGlyph bg = (FT_BitmapGlyph)glyph;
+			int gx = x + bg->left, gy = y - bg->top, row, col;
+			for (row = 0; row < (int)bg->bitmap.rows; row++) {
+				int py = gy + row;
+				if (py < cy0 || py >= cy1)
+					continue;
+				for (col = 0; col < (int)bg->bitmap.width; col++) {
+					int pxx = gx + col, cov;
+					uint8_t *d;
+					float sa, da, oa;
+					if (pxx < cx0 || pxx >= cx1)
+						continue;
+					if (bg->bitmap.pixel_mode ==
+							FT_PIXEL_MODE_MONO)
+						cov = (bg->bitmap.buffer[row *
+							bg->bitmap.pitch + col / 8] &
+							(0x80 >> (col & 7))) ? 255 : 0;
+					else
+						cov = bg->bitmap.buffer[row *
+							bg->bitmap.pitch + col];
+					if (cov == 0)
+						continue;
+					d = px + py * stride + pxx * 4;
+					sa = cov / 255.0f * alpha;
+					da = d[3] / 255.0f;
+					oa = sa + da * (1 - sa);
+					if (oa <= 0)
+						continue;
+					d[0] = (uint8_t)((cr * sa + d[0] * da *
+						(1 - sa)) / oa + 0.5f);
+					d[1] = (uint8_t)((cg * sa + d[1] * da *
+						(1 - sa)) / oa + 0.5f);
+					d[2] = (uint8_t)((cb * sa + d[2] * da *
+						(1 - sa)) / oa + 0.5f);
+					d[3] = (uint8_t)(oa * 255 + 0.5f);
+				}
+			}
+		}
+		x += glyph->advance.x >> 16;
+	}
+	return true;
+}
+
+static struct gui_canvas_table canvas_table = {
+	.fill_text = fb_canvas_fill_text,
+};
+
+struct gui_canvas_table *framebuffer_canvas_table = &canvas_table;

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Cross-compila o nucleo do NetSurf + frontend Xbox com nxdk-cc.
 import subprocess, os, sys, shlex, glob, concurrent.futures as cf
-NS   = '/home/claude/ns-src/netsurf-all-3.11/netsurf'
+NS   = os.environ.get('NSROOT', '/home/claude/ns-src/netsurf-all-3.11') + '/netsurf'
 PRJ  = '/home/claude/netsurfx'
 NX   = '/home/claude/nxdk'
 OUT  = PRJ + '/nsbuild'
@@ -10,7 +10,7 @@ os.makedirs(OUT + '/obj', exist_ok=True)
 srcs = [l.strip() for l in open(PRJ + '/tools/ns_sources.txt') if l.strip() and not l.startswith('#')]
 
 defs = ['-DWITH_UTF8PROC', '-DUTF8PROC_STATIC', '-DWITH_PNG', '-DWITH_BMP', '-DWITH_GIF', '-DWITH_JPEG',
-        '-DWITH_XBOXFETCH', '-DFB_USE_FREETYPE', '-Dnsframebuffer', '-Dsmall', '-DSTMTEXPR=1',
+        '-DWITH_XBOXFETCH', '-DWITH_NS_SVG', '-DWITH_WEBP', '-DFB_USE_FREETYPE', '-Dnsframebuffer', '-Dsmall', '-DSTMTEXPR=1',
         '-DNETSURF_UA_FORMAT_STRING="Mozilla/5.0 (%s) NetSurf/%d.%d"',
         '-DNETSURF_HOMEPAGE="about:welcome"', '-DNETSURF_LOG_LEVEL=INFO',
         '-DNETSURF_BUILTIN_LOG_FILTER="(level:WARNING)"', '-DNETSURF_BUILTIN_VERBOSE_FILTER="(level:VERBOSE)"',
@@ -24,7 +24,7 @@ defs = ['-DWITH_UTF8PROC', '-DUTF8PROC_STATIC', '-DWITH_PNG', '-DWITH_BMP', '-DW
 incs = ['-I' + PRJ + '/nsshim', '-I' + PRJ + '/fe', '-I' + PRJ + '/gen', '-I' + PRJ + '/src',
         '-I' + NS, '-I' + NS + '/include', '-I' + NS + '/frontends', '-I' + NS + '/content/handlers',
         '-I' + PRJ + '/nslibs/include', '-I' + PRJ + '/mbedtls_cfg',
-        '-I/home/claude/ns-src/netsurf-all-3.11/libnsfb/src', '-I/home/claude/ns-src/netsurf-all-3.11/libnsfb/include',
+        '-I' + NS + '/../libnsfb/src', '-I' + NS + '/../libnsfb/include',
         '-I' + NX + '/lib/sdl/SDL_ttf/external/freetype-2.4.12/include', '-I' + NX + '/lib/sdl',
         '-I' + NX + '/lib/libpng/libpng', '-I' + NX + '/lib/libpng',
         '-isystem', NX + '/lib/libjpeg/libjpeg-turbo', '-I' + NX + '/lib/libjpeg',

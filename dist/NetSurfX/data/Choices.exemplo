@@ -11,8 +11,8 @@
 # Tentar 720p (cabo componente e 720p activo no dashboard). 1 = sim
 #xbox_hd:0
 #
-# Motor de pesquisa da barra de endereco: 0 DuckDuckGo, 1 FrogFind, 2 Google, 3 Wikipedia
-#search_provider:0
+# Motor de pesquisa da barra de endereco (nome exacto): DuckDuckGo Lite, FrogFind, Google, Wikipedia
+#search_web_provider:DuckDuckGo Lite
 #
 # Tamanho de letra base em decimos de ponto (128 = 12,8 pt) e minimo
 #font_size:128

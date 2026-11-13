@@ -1,7 +1,7 @@
 import subprocess, shlex, os, sys, glob
-ROOT = '/home/claude/ns-src/netsurf-all-3.11'
-OUT = '/home/claude/netsurfx/nslibs'
-PFX = '/tmp/nsprefix'
+ROOT = os.environ.get('NSROOT', '/home/claude/ns-src/netsurf-all-3.11') + ''
+OUT = os.environ.get('NSOUT', '/home/claude/netsurfx/nslibs')
+PFX = os.environ.get('NSPFX', '/tmp/nsprefix')
 libs = sys.argv[1:]
 os.makedirs(OUT + '/lib', exist_ok=True)
 env = dict(os.environ)

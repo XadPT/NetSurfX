@@ -21,4 +21,5 @@ unsigned int sleep(unsigned int s);
 int usleep(unsigned int us);
 int isatty(int fd);
 long sysconf(int name);
+int getpid(void);
 #endif

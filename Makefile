@@ -16,7 +16,7 @@ include $(NXDK_DIR)/Makefile
 NSLIBS = $(CURDIR)/nslibs/lib
 NSOBJS := $(sort $(wildcard $(CURDIR)/nsbuild/obj/*.obj))
 LDFLAGS += -stack:1048576 $(NSOBJS) \
-	$(NSLIBS)/libnsfb.lib $(NSLIBS)/libnsbmp.lib $(NSLIBS)/libnsgif.lib \
+	$(NSLIBS)/libnsfb.lib $(NSLIBS)/libsvgtiny.lib $(NSLIBS)/libexpat.lib $(NSLIBS)/libwebp.lib $(NSLIBS)/libnsbmp.lib $(NSLIBS)/libnsgif.lib \
 	$(NSLIBS)/libutf8proc.lib $(NSLIBS)/libnsutils.lib \
 	$(NSLIBS)/libdom.lib $(NSLIBS)/libhubbub.lib $(NSLIBS)/libcss.lib \
 	$(NSLIBS)/libparserutils.lib $(NSLIBS)/libwapcaplet.lib \

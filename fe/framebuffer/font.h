@@ -19,6 +19,9 @@
 #ifndef NETSURF_FB_FONT_H
 #define NETSURF_FB_FONT_H
 
+#include <stdint.h>
+#include <stddef.h>
+
 extern struct gui_layout_table *framebuffer_layout_table;
 extern struct gui_utf8_table *framebuffer_utf8_table;
 
@@ -26,6 +29,12 @@ extern struct gui_utf8_table *framebuffer_utf8_table;
  * Initialise framebuffer font handling.
  */
 bool fb_font_init(void);
+
+/* register an in-memory webfont under a CSS family name (freetype build).
+ * data must remain valid for the process lifetime. */
+bool fb_font_register_webfont(const char *family,
+			      const uint8_t *data,
+			      size_t data_len);
 
 /**
  * Finalise framebuffer font handling.

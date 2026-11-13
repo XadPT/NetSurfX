@@ -1,5 +1,14 @@
-NetSurfX - browser NetSurf 3.11 para a Xbox classica
+NetSurfX v0.5 - browser NetSurf para a Xbox classica
 =====================================================
+Base: NetSurf 3.11 com as melhorias do port para a Switch
+(etonedemid/netsurf-switch), adaptado a Xbox.
+
+NOVO NA v0.5
+  - CSS moderno: grelhas (display:grid), flexbox corrigido, variaveis
+    (var()), calc(), gradientes, sombras, cantos redondos, transparencia.
+  - Fontes web (@font-face) em TTF/OTF e WOFF (WOFF2 nao).
+  - Imagens SVG (ficheiro e embutidas) e WebP.
+  - <details>, <dialog>, [hidden] e <template> mostrados como num PC.
 
 INSTALAR
   Copia a pasta NetSurfX inteira por FTP para o disco da Xbox, por exemplo
@@ -46,6 +55,8 @@ LIMITES
   Se o relogio da Xbox estiver muito errado, alguns sites HTTPS podem
   mostrar um aviso de certificado (podes continuar com "Proceed").
 
+  Video e audio nao sao suportados.
+
 LICENCAS
-  NetSurf (GPLv2), mbedTLS (Apache 2.0), fontes DejaVu, nxdk (MIT e
-  outras): ver a pasta licencas.
+  NetSurf (GPLv2), mbedTLS (Apache 2.0), expat (MIT), libwebp (BSD),
+  fontes DejaVu, nxdk (MIT e outras): ver a pasta licencas.

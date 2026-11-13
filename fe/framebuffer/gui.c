@@ -54,6 +54,12 @@
 #include "framebuffer/image_data.h"
 #include "framebuffer/font.h"
 #include "framebuffer/clipboard.h"
+#include "framebuffer/corewindow.h"
+#include "html/webfont.h"
+
+#ifdef FB_USE_FREETYPE
+extern struct gui_canvas_table *framebuffer_canvas_table;
+#endif
 #include "framebuffer/fetch.h"
 #include "framebuffer/bitmap.h"
 #include "framebuffer/local_history.h"
@@ -547,34 +553,25 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	}
 
 	/* set system colours for framebuffer ui */
-	nsoption_set_colour(sys_colour_ActiveBorder, 0x00000000);
-	nsoption_set_colour(sys_colour_ActiveCaption, 0x00ddddcc);
-	nsoption_set_colour(sys_colour_AppWorkspace, 0x00eeeeee);
-	nsoption_set_colour(sys_colour_Background, 0x00aa0000);
+	nsoption_set_colour(sys_colour_AccentColor, 0x00666666);
+	nsoption_set_colour(sys_colour_AccentColorText, 0x00ffffff);
+	nsoption_set_colour(sys_colour_ActiveText, 0x000000ee);
+	nsoption_set_colour(sys_colour_ButtonBorder, 0x00aaaaaa);
 	nsoption_set_colour(sys_colour_ButtonFace, 0x00dddddd);
-	nsoption_set_colour(sys_colour_ButtonHighlight, 0x00cccccc);
-	nsoption_set_colour(sys_colour_ButtonShadow, 0x00bbbbbb);
 	nsoption_set_colour(sys_colour_ButtonText, 0x00000000);
-	nsoption_set_colour(sys_colour_CaptionText, 0x00000000);
+	nsoption_set_colour(sys_colour_Canvas, 0x00aaaaaa);
+	nsoption_set_colour(sys_colour_CanvasText, 0x00000000);
+	nsoption_set_colour(sys_colour_Field, 0x00f1f1f1);
+	nsoption_set_colour(sys_colour_FieldText, 0x00000000);
 	nsoption_set_colour(sys_colour_GrayText, 0x00777777);
 	nsoption_set_colour(sys_colour_Highlight, 0x00ee0000);
 	nsoption_set_colour(sys_colour_HighlightText, 0x00000000);
-	nsoption_set_colour(sys_colour_InactiveBorder, 0x00000000);
-	nsoption_set_colour(sys_colour_InactiveCaption, 0x00ffffff);
-	nsoption_set_colour(sys_colour_InactiveCaptionText, 0x00cccccc);
-	nsoption_set_colour(sys_colour_InfoBackground, 0x00aaaaaa);
-	nsoption_set_colour(sys_colour_InfoText, 0x00000000);
-	nsoption_set_colour(sys_colour_Menu, 0x00aaaaaa);
-	nsoption_set_colour(sys_colour_MenuText, 0x00000000);
-	nsoption_set_colour(sys_colour_Scrollbar, 0x00aaaaaa);
-	nsoption_set_colour(sys_colour_ThreeDDarkShadow, 0x00555555);
-	nsoption_set_colour(sys_colour_ThreeDFace, 0x00dddddd);
-	nsoption_set_colour(sys_colour_ThreeDHighlight, 0x00aaaaaa);
-	nsoption_set_colour(sys_colour_ThreeDLightShadow, 0x00999999);
-	nsoption_set_colour(sys_colour_ThreeDShadow, 0x00777777);
-	nsoption_set_colour(sys_colour_Window, 0x00aaaaaa);
-	nsoption_set_colour(sys_colour_WindowFrame, 0x00000000);
-	nsoption_set_colour(sys_colour_WindowText, 0x00000000);
+	nsoption_set_colour(sys_colour_LinkText, 0x00ee0000);
+	nsoption_set_colour(sys_colour_Mark, 0x0000ffff);
+	nsoption_set_colour(sys_colour_MarkText, 0x00000000);
+	nsoption_set_colour(sys_colour_SelectedItem, 0x00e48435);
+	nsoption_set_colour(sys_colour_SelectedItemText, 0x00ffffff);
+	nsoption_set_colour(sys_colour_VisitedText, 0x008b1a55);
 
 	return NSERROR_OK;
 }
@@ -1782,10 +1779,12 @@ create_browser_widget(struct gui_window *gw, int toolbar_height, int furniture_w
 	struct browser_widget_s *browser_widget;
 	browser_widget = calloc(1, sizeof(struct browser_widget_s));
 
+	/* NetSurfX: sem barras de scroll (o analogico direito faz scroll), a
+	 * pagina ocupa a largura toda; so fica a barra de estado em baixo */
 	gw->browser = fbtk_create_user(gw->window,
 				       0,
 				       toolbar_height,
-				       -furniture_width,
+				       0,
 				       -furniture_width,
 				       browser_widget);
 
@@ -1817,8 +1816,7 @@ create_normal_browser_window(struct gui_window *gw, int furniture_width)
 
 	gw->window = fbtk_create_window(fbtk, 0, 0, 0, 0, 0);
 
-	statusbar_width = nsoption_int(toolbar_status_size) *
-		fbtk_get_width(gw->window) / 10000;
+	statusbar_width = fbtk_get_width(gw->window);   /* NetSurfX: largura toda */
 
 	/* toolbar */
 	toolbar = create_toolbar(gw, 
@@ -1902,6 +1900,11 @@ create_normal_browser_window(struct gui_window *gw, int furniture_width)
 					  fb_scroll_callback,
 					  gw);
 
+	/* NetSurfX: as barras de scroll existem (o NetSurf actualiza-as) mas nao se veem */
+	fbtk_set_mapping(gw->hscroll, false);
+	fbtk_set_mapping(gw->vscroll, false);
+	fbtk_set_mapping(gw->bottom_right, false);
+
 	/* browser widget */
 	create_browser_widget(gw, toolbar_height, nsoption_int(fb_furniture_size));
 
@@ -1924,7 +1927,7 @@ resize_normal_browser_window(struct gui_window *gw, int furniture_width)
 
 	width = fbtk_get_width(gw->window);
 	height = fbtk_get_height(gw->window);
-	statusbar_width = nsoption_int(toolbar_status_size) * width / 10000;
+	statusbar_width = width;
 
 	resize_toolbar(gw, toolbar_height, 2,
 			nsoption_charp(fb_toolbar_layout));
@@ -1944,7 +1947,7 @@ resize_normal_browser_window(struct gui_window *gw, int furniture_width)
 			height - toolbar_height - furniture_width);
 	resize_browser_widget(gw,
 			0, toolbar_height,
-			width - furniture_width,
+			width,
 			height - furniture_width - toolbar_height);
 }
 
@@ -2309,10 +2312,13 @@ gui_window_event(struct gui_window *gw, enum gui_window_event event)
 
 	case GW_EVENT_START_THROBBER:
 		gui_window_start_throbber(gw);
+		if (gw->toolbar) fbtk_request_redraw(gw->toolbar);
 		break;
 
 	case GW_EVENT_STOP_THROBBER:
 		gui_window_stop_throbber(gw);
+		/* NetSurfX: algumas paginas deixavam os icones da barra por desenhar */
+		if (gw->toolbar) fbtk_request_redraw(gw->toolbar);
 		break;
 
 	default:
@@ -2369,6 +2375,10 @@ main(int argc, char** argv)
 		.utf8 = framebuffer_utf8_table,
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
+		.corewindow = framebuffer_core_window_table,
+#ifdef FB_USE_FREETYPE
+		.canvas = framebuffer_canvas_table,
+#endif
 	};
 	int vw0, vh0;
 	(void)argc; (void)argv;
@@ -2437,13 +2447,16 @@ main(int argc, char** argv)
 	if (fb_font_init() == false)
 		die("Nao foi possivel carregar as fontes (res\\fonts)");
 
+	/* @font-face: o nucleo entrega as fontes descarregadas ao FreeType */
+	html_webfont_set_register_cb(fb_font_register_webfont);
+
 	fbtk = fbtk_init(nsfb);
 
 	fbtk_enable_oskb(fbtk);
 
 	nsx_bookmarks_init();
 	search_web_init("D:\\res\\SearchEngines");
-	search_web_select_provider(nsoption_int(search_provider));
+	search_web_select_provider(nsoption_charp(search_web_provider));
 
 	urldb_load_cookies(nsoption_charp(cookie_file));
 

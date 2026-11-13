@@ -223,6 +223,33 @@ static enum ui_btn ui_wait_button(void)
 	}
 }
 
+/* ao fechar um ecra modal: espera que os botoes sejam largados e deita fora os
+ * eventos pendentes. Sem isto, o "largar" do A que fechou o teclado chegava ao
+ * NetSurf como um clique e voltava a abrir o teclado (barra de endereco/campo). */
+static void ui_drain(void)
+{
+	static const SDL_GameControllerButton btns[] = {
+		SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X,
+		SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_START, SDL_CONTROLLER_BUTTON_BACK,
+		SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER };
+	SDL_Event ev;
+	uint32_t t0 = SDL_GetTicks();
+	for (;;) {
+		SDL_GameController *p = nsfb_xbox_pad();
+		bool held = false;
+		while (SDL_PollEvent(&ev)) {
+			if (ev.type == SDL_CONTROLLERDEVICEADDED || ev.type == SDL_CONTROLLERDEVICEREMOVED)
+				nsfb_xbox_handle_hotplug(&ev);
+		}
+		if (p != NULL)
+			for (size_t i = 0; i < sizeof btns / sizeof btns[0]; i++)
+				if (SDL_GameControllerGetButton(p, btns[i])) held = true;
+		if (!held || SDL_GetTicks() - t0 > 3000) break;
+		Sleep(10);
+	}
+	while (SDL_PollEvent(&ev)) { }
+}
+
 /* ------------------------------------------------------------------ texto UTF-8 com cursor */
 
 struct ebuf { char s[2048]; size_t len; size_t cur; };
@@ -445,6 +472,7 @@ bool nsx_osk_run(const char *title, const char *initial, char *out, size_t outsz
 		}
 	}
 
+	ui_drain();
 	nsfb_xbox_block_input(false);
 	ui_restore();
 	if (ok) snprintf(out, outsz, "%s", e.s);
@@ -505,6 +533,7 @@ void nsx_help_show(void)
 	{ const char *c = "Carrega em qualquer bot\xc3\xa3o para fechar"; ui_text(40, H - 36, &fs, c, strlen(c)); }
 	ui_present();
 	ui_wait_button();
+	ui_drain();
 	nsfb_xbox_block_input(false);
 	ui_restore();
 }

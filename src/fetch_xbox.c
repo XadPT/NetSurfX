@@ -872,7 +872,7 @@ static void *xf_setup(struct fetch *parent, nsurl *url, bool only_2xx, bool down
 		req_add(&b, &bl, &bc, "%s\r\n", headers[i]);
 	}
 	if (!have_accept)
-		req_add(&b, &bl, &bc, "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/png,image/jpeg,image/gif,*/*;q=0.8\r\n");
+		req_add(&b, &bl, &bc, "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/svg+xml,image/png,image/jpeg,image/gif,*/*;q=0.8\r\n");
 	if (body != NULL || f->is_post) {
 		if (post_multipart)
 			req_add(&b, &bl, &bc, "Content-Type: multipart/form-data; boundary=%s\r\n", boundary);

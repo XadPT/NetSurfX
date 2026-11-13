@@ -51,4 +51,49 @@ if 'nsfb_ram_register' not in s5:
     open(p5, 'w').write(s5)
     done.append('libnsfb/src/surface/ram.c')
 
+# 6. gui_factory.c (fork): sockets por omissao so existem com curl; na Xbox
+#    o nosso fetcher abre os seus proprios sockets lwIP
+p6 = os.path.join(ROOT, 'netsurf/desktop/gui_factory.c')
+if os.path.exists(p6) and 'gui_default_socket_open' in open(p6).read():
+    edit('netsurf/desktop/gui_factory.c',
+         'static int gui_default_socket_open(int domain, int type, int protocol)\n{\n',
+         'static int gui_default_socket_open(int domain, int type, int protocol)\n{\n#ifdef XBOX /* NSX */\n\treturn -1;\n#endif\n',
+         '#ifdef XBOX /* NSX */\n\treturn -1;\n#endif\n')
+    s6 = open(p6).read()
+    if 'NSX sockclose' not in s6:
+        s6 = s6.replace('\treturn (int) socket(domain, type, protocol);', '#ifndef XBOX\n\treturn (int) socket(domain, type, protocol);\n#endif')
+        s6 = s6.replace('static int gui_default_socket_close(int fd)\n{\n\treturn (int) ns_close_socket(fd);',
+                        'static int gui_default_socket_close(int fd)\n{ /* NSX sockclose */\n#ifdef XBOX\n\treturn -1;\n#else\n\treturn (int) ns_close_socket(fd);\n#endif')
+        open(p6, 'w').write(s6); done.append('netsurf/desktop/gui_factory.c')
+
+# 7. box_construct.c: itens de flex/grid sao "blockificados" (CSS Display 3),
+#    incluindo elementos inline como <span> e <a>
+p7 = os.path.join(ROOT, 'netsurf/content/handlers/html/box_construct.c')
+if os.path.exists(p7) and 'Blockification */' in open(p7).read():
+    edit('netsurf/content/handlers/html/box_construct.c',
+         '\t\t\tcase BOX_INLINE_BLOCK:\n\t\t\t\tbox->type = BOX_BLOCK;\n\t\t\t\tbreak;\n',
+         '\t\t\tcase BOX_INLINE_BLOCK:\n\t\t\tcase BOX_INLINE: /* NSX blockify */\n\t\t\t\tbox->type = BOX_BLOCK;\n\t\t\t\tbreak;\n',
+         'NSX blockify')
+
+# 8. layout_flex.c: a "flex base size" nao e limitada ao min-content (o limite
+#    minimo aplica-se depois, na resolucao) -> flex:1 da colunas iguais
+p8 = os.path.join(ROOT, 'netsurf/content/handlers/html/layout_flex.c')
+if os.path.exists(p8):
+    edit('netsurf/content/handlers/html/layout_flex.c',
+         '\t\titem->base_size = max(item->base_size, content_min_width);\n',
+         '\t\titem->base_size = max(item->base_size, 0); /* NSX flexbase */\n',
+         'NSX flexbase')
+
+# 9. webfont.c: limites de memoria das fontes web na Xbox (64 MB)
+p9 = os.path.join(ROOT, 'netsurf/content/handlers/html/webfont.c')
+if os.path.exists(p9):
+    edit('netsurf/content/handlers/html/webfont.c',
+         '#define WEBFONT_MAX_SIZE (8 * 1024 * 1024)\n',
+         '#ifdef XBOX /* NSX wflimits */\n#define WEBFONT_MAX_SIZE (1024 * 1024)\n#else\n#define WEBFONT_MAX_SIZE (8 * 1024 * 1024)\n#endif\n',
+         'NSX wflimits')
+    edit('netsurf/content/handlers/html/webfont.c',
+         '#define WEBFONT_MAX_FETCHES 32\n',
+         '#ifdef XBOX /* NSX wffetches */\n#define WEBFONT_MAX_FETCHES 48\n#else\n#define WEBFONT_MAX_FETCHES 32\n#endif\n',
+         'NSX wffetches')
+
 print('alterados:', ', '.join(sorted(set(done))) or 'nada (ja aplicado)')

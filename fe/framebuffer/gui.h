@@ -37,6 +37,8 @@ struct gui_window {
 	struct fbtk_widget_s *stop;
 	struct fbtk_widget_s *reload;
 	struct fbtk_widget_s *close;
+	struct fbtk_widget_s *jsbutton;
+	struct fbtk_widget_s *bookmark;
 	struct fbtk_widget_s *url;
 	struct fbtk_widget_s *status;
 	struct fbtk_widget_s *throbber;
@@ -45,6 +47,11 @@ struct gui_window {
 	struct fbtk_widget_s *browser;
 	struct fbtk_widget_s *toolbar;
 	struct fbtk_widget_s *bottom_right;
+
+	/* audio transport bar (hidden unless something is playing) */
+	struct fbtk_widget_s *audiobar;
+	struct fbtk_widget_s *audio_label;
+	struct fbtk_widget_s *audio_playpause;
 
 	int throbber_index;
 

@@ -91,7 +91,9 @@ Processing:Processing
 Formatting:Formatting
 Done:Done
 Stopped:Stopped
-BadRedirect:Bad redirect URL
+UnsupportedRedirect:Bad redirect URL
+CyclicRedirect:Redirected too many times. Try deleting your cookies
+UnsafeRedirect:Redirected to an unsafe URL
 FetchFailed:Unable to fetch document
 NotCSS:Warning: stylesheet is not CSS
 NotFavIco:Favicon not supported
@@ -190,7 +192,9 @@ Backtoprevious:Back
 TryAgain:Try Again
 FetchErrorTitle:Error occurred fetching page
 FetchErrorDescription:An error occurred when connecting to %s
-FetchFailedToFinish:The fetcher for this request failed to complete
+FetchFailedToFinish:The fetch for this request failed to complete
+FetchErrorCode:Error code
+FetchFile:fetching file
 SSLCerts:SSL certificates
 SSLError:NetSurf failed to verify the authenticity of an SSL certificate. Please verify the details presented below.
 SSL_Certificate_Subject:Subject: %s
@@ -396,6 +400,7 @@ ClearNS:Clear selection
 Browser:Browser
 HistGlobalNS:Show global history
 HistLocalNS:Show local history
+ShowCookiesNS:Show cookies
 FindTextNS:Find text...
 Redraw:Redraw page
 ScaleNS:Scale
@@ -408,8 +413,8 @@ Settings:Settings
 SnapshotWindow:Snapshot window
 SettingsSave:Save settings
 Link:Link
-LinkNewTab:Open in new tab
-LinkNewWin:Open in new window
+LinkNewTab:Open link in new tab
+LinkNewWin:Open link in new window
 CopyURL:Copy URL to clipboard
 CopyClip:Copy to clipboard
 SaveAs:Save as...
@@ -462,6 +467,7 @@ con_image:Images
 con_inter:Interface
 con_lang:Language
 con_memory:Memory
+con_search:Search
 con_secure:Security
 con_theme:Themes
 con_general:General
@@ -507,6 +513,7 @@ Resolution:Resolution
 ResolutionY:Vertical resolution
 ResolutionX:Horizontal resolution
 DPI:DPI
+DefaultScale:Default page scaling
 FontFamilies:Font families
 FontSans:Sans-serif
 FontSerif:Serif
@@ -521,9 +528,10 @@ CacheMemory:Memory cache
 CacheDisc:Disc cache
 Size:Size
 Duration:Duration
+Tabs:Tabs
+TabLinkOpen:Open links in tabs instead of new windows
+TabSwitchNew:When a new tab is opened immediately switch to it
 TabbedBrowsing:Tabbed browsing
-TabActive:Open new tabs in background
-TabMiddle:Middle mouse button opens tabs
 TabLast:Open new tabs after all existing tabs
 Downloads:Downloads
 ConfirmOverwrite:Request confirmation when overwriting

@@ -364,3 +364,8 @@ int closedir(DIR *d)
 
 /* scandir() e alphasort() vem do proprio NetSurf (utils/utils.c) */
 
+
+int getpid(void)
+{
+	return 1;
+}

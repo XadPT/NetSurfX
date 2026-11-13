@@ -22,6 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 #include <libnsfb.h>
 #include <libnsfb_plot.h>
 #include <libnsfb_plot_util.h>
@@ -71,6 +75,8 @@ fb_text_font_style(fbtk_widget_t *widget, int *font_height, int *padding,
 	*padding = (widget->height - *padding - *font_height) / 2;
 #endif
 
+	/* no CSS family list for UI text; must be NULL, not stack garbage */
+	font_style->families = NULL;
 	font_style->family = PLOT_FONT_FAMILY_SANS_SERIF;
 	font_style->size = px_to_pt(*font_height * PLOT_STYLE_SCALE);
 	font_style->weight = 400;
