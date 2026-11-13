@@ -79,7 +79,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_download.h"
 #include "xbox_perf.h"
 
-#define NSX_VERSION "0.7.1-testes"
+#define NSX_VERSION "0.7.2-testes"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -679,6 +679,13 @@ static uint32_t g_stats_last;
  * browser esta parado (a cada 2 s, ou logo a seguir a carregar uma pagina) */
 static void fb_stats_tick(void)
 {
+	static unsigned seen_asserts;
+	if (nsx_assert_count() != seen_asserts) {
+		/* um erro interno foi registado (e ignorado): avisa uma vez */
+		if (seen_asserts == 0)
+			nsx_toast("Erro interno registado em NSX-ERRO.LOG (o browser continua)");
+		seen_asserts = nsx_assert_count();
+	}
 	struct gui_window *gw = fb_current();
 	uint32_t now = GetTickCount();
 	char buf[200];

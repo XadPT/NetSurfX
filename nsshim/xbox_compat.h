@@ -75,4 +75,19 @@ int nsx_rename(const char *from, const char *to);
 #ifdef __cplusplus
 }
 #endif
+/* strtod/strtof do nxdk sao "assert(0)": usamos as nossas (xbox_libc.c) */
+double nsx_strtod(const char *nptr, char **endptr);
+float nsx_strtof(const char *nptr, char **endptr);
+long double nsx_strtold(const char *nptr, char **endptr);
+double nsx_atof(const char *nptr);
+#define strtod nsx_strtod
+#define strtof nsx_strtof
+#define strtold nsx_strtold
+#define atof nsx_atof
+/* lroundf/llroundf da pdclib tambem sao "assert(0)" (usados pelo SVG) */
+long nsx_lroundf(float x);
+long long nsx_llroundf(float x);
+#define lroundf nsx_lroundf
+#define llroundf nsx_llroundf
+
 #endif

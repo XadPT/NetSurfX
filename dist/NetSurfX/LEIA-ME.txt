@@ -1,9 +1,20 @@
-NetSurfX v0.7.1 (versao de testes) - browser NetSurf para a Xbox classica
+NetSurfX v0.7.2 (versao de testes) - browser NetSurf para a Xbox classica
 =====================================================
 Base: NetSurf 3.11 com as melhorias do port para a Switch
 (etonedemid/netsurf-switch), adaptado a Xbox.
 
-VERSAO DE TESTES (v0.7.1): DIAGNOSTICO LIGADO
+CORRIGIDO NA v0.7.2
+  - O browser encravava com "Assertion failed ... strtof" em sites com CSS
+    moderno (ex.: Google). O nxdk nao tem strtod/strtof (so um "assert"
+    que para a consola); o NetSurfX traz agora as suas proprias, e tambem
+    lroundf (usada nas imagens SVG), que estava no mesmo caso.
+  - Numeros com casas decimais em textos internos (printf %f) nao saiam e
+    podiam baralhar o resto do texto: a pdclib do nxdk nao os suporta.
+    Agora usa a stb_sprintf (dominio publico), que suporta.
+  - Se alguma verificacao interna falhar, em vez de encravar a Xbox o
+    erro fica registado em NSX-ERRO.LOG e o browser tenta continuar.
+
+VERSAO DE TESTES: DIAGNOSTICO LIGADO
   Esta versao regista tudo o que e preciso para encontrar erros e medir o
   desempenho, sem teres de fazer nada:
   - NETSURF.LOG (ao lado do default.xbe): cada pedido de rede com tempos
@@ -99,6 +110,7 @@ FICHEIROS
   NETSURF.LOG     registo de diagnostico desta sessao (ver em baixo)
   NETSURF.OLD     registo da sessao anterior (util depois de um crash)
   NSX-BLOQUEIO.LOG  so aparece se o browser ficar bloqueado mais de 8 s
+  NSX-ERRO.LOG    so aparece se uma verificacao interna falhar
   DASH.TXT        (opcional) caminho do teu dashboard para o IGR, ex.:
                   C:\xboxdash.xbe  (sem ele, a Xbox volta ao dashboard
                   normal passando pela animacao de arranque)
@@ -114,4 +126,5 @@ LIMITES
 
 LICENCAS
   NetSurf (GPLv2), mbedTLS (Apache 2.0), expat (MIT), libwebp (BSD),
+  stb_sprintf (dominio publico),
   fontes DejaVu, nxdk (MIT e outras): ver a pasta licencas.

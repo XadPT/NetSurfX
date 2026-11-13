@@ -202,4 +202,5 @@ src/xbox_woff.c
 src/xbox_fastmem.c
 src/xbox_kbd.c
 src/xbox_perf.c
+src/xbox_libc.c
 src/xbox_usbhid.c

@@ -259,3 +259,35 @@ void nsx_watch_start(void)
 	g_beat = GetTickCount();
 	CreateThread(NULL, 32 * 1024, watch_thread, NULL, 0, NULL);
 }
+
+/* ---------------------------------------------------------------- asserts */
+
+/*
+ * O assert() do nxdk escreve a mensagem e PARA a consola (cli; hlt). Na
+ * versao de testes preferimos registar e continuar: muitas verificacoes
+ * do NetSurf sao de situacoes que se recuperam, e assim ficamos com o
+ * registo do problema em vez de uma Xbox encravada.
+ */
+static volatile unsigned g_asserts;
+
+unsigned nsx_assert_count(void) { return g_asserts; }
+
+#ifdef XBOX
+void _xbox_assert(char const *const expression, char const *const file_name,
+		  char const *const function_name, unsigned long line)
+{
+	unsigned n = ++g_asserts;
+	if (n > 200) return;              /* em ciclo: nao encher o disco */
+	NSLOG(netsurf, ERROR, "[ERRO] assert falhou: '%s' em %s (%s:%lu) - pagina %s",
+	      expression, function_name, file_name, line, P.page_url);
+	nsx_log_flush();
+	{
+		FILE *f = fopen("D:\\NSX-ERRO.LOG", "a");
+		if (f) {
+			fprintf(f, "assert falhou: '%s'\n  em %s (%s:%lu)\n  pagina: %s\n\n",
+				expression, function_name, file_name, line, P.page_url);
+			fclose(f);
+		}
+	}
+}
+#endif

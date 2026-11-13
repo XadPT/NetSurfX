@@ -32,4 +32,7 @@ void nsx_perf_status(char *buf, size_t len);
 void nsx_watch_start(void);
 void nsx_heartbeat(const char *phase);
 
+/* quantos asserts falharam (registados em NSX-ERRO.LOG) */
+unsigned nsx_assert_count(void);
+
 #endif

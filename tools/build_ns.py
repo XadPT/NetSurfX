@@ -58,7 +58,8 @@ def compile_one(s):
         if not hdr_newer: return (s, None)
     extra = ['-DFT2_BUILD_LIBRARY'] if 'freetype' in s else []
     if 'usbhid' in s: extra = extra + ['-I' + NX + '/lib/usb/libusbohci_xbox', '-DUSBH_USE_EXTERNAL_CONFIG="usbh_config_xbox.h"']
-    if 'fastmem' in s: extra = extra + ['-fno-builtin']   # nunca transformar os lacos em chamadas a memcpy
+    if 'fastmem' in s: extra = extra + ['-fno-builtin']
+    if 'xbox_libc' in s: extra = extra + ['-I' + PRJ + '/third_party']   # nunca transformar os lacos em chamadas a memcpy
     cmd = ['nxdk-cc'] + base + defs + incs + extra + ['-c', '-o', obj, p]
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=NS)
     if r.returncode:
