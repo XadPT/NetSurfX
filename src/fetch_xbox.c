@@ -52,6 +52,7 @@
 #include <nsutils/base64.h>
 
 #include "xbox_net.h"
+#include "xbox_perf.h"
 
 #define CONNECT_TIMEOUT_MS 20000
 #define IO_TIMEOUT_MS      30000
@@ -152,6 +153,11 @@ struct xf {
 	/* --- download para ficheiro (sem passar pela cache em memoria) --- */
 	FILE *sink;                  /* se != NULL o corpo vai para aqui */
 	volatile int dl_status;      /* codigo HTTP da resposta */
+	/* --- tempos (diagnostico): escritos pela thread antes do resultado --- */
+	uint32_t t0, t_conn, t_tls, t_first, t_end;   /* ms (GetTickCount) */
+	uint32_t bytes_in;
+	bool reused;
+
 	int64_t dl_total;            /* tamanho anunciado (-1 desconhecido), g_lock */
 	int64_t dl_got;              /* bytes ja escritos, g_lock */
 };
@@ -216,6 +222,7 @@ static bool push_data(struct xf *f, const uint8_t *p, size_t n)
 		if (f->cancel) { LeaveCriticalSection(&g_lock); return false; }
 		if (f->data_len < MAX_PENDING_DATA) {
 			bool ok = buf_append((char **)&f->data, &f->data_len, &f->data_cap, p, n);
+			f->bytes_in += (uint32_t)n;
 			LeaveCriticalSection(&g_lock);
 			if (!ok) set_error(f, XR_ERROR, "Out of memory");
 			return ok;
@@ -767,6 +774,7 @@ static struct conn *conn_open(struct xf *f)
 		}
 		mbedtls_ssl_set_bio(&c->ssl, &c->io, bio_send, bio_recv, NULL);
 		tls_cache_get(f, &c->ssl);
+		{ uint32_t th0 = GetTickCount();
 		while ((r = mbedtls_ssl_handshake(&c->ssl)) != 0) {
 			if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
 			if (f->cancel) goto fail;
@@ -779,6 +787,7 @@ static struct conn *conn_open(struct xf *f)
 			publish_chain(f, &vc, 0, NULL);
 			goto fail;
 		}
+		f->t_tls = GetTickCount() - th0; }
 		/* a verificacao so acontece no handshake; vc deixa de existir */
 		mbedtls_ssl_conf_verify(&c->conf, NULL, NULL);
 		vflags = mbedtls_ssl_get_verify_result(&c->ssl);
@@ -941,6 +950,7 @@ static enum rr run_on_conn(struct xf *f, struct conn *c, bool reused, bool *reus
 			if (!f->cancel) set_error(f, XR_ERROR, "The server closed the connection without a reply");
 			goto out;
 		}
+		if (f->t_first == 0) f->t_first = GetTickCount();
 		if (!buf_append(&hb, &hlen, &hcap, buf, (size_t)n)) { set_error(f, XR_ERROR, "Out of memory"); goto out; }
 		char *end;
 	again:
@@ -1091,6 +1101,8 @@ static void run_request(struct xf *f)
 				set_chain(f, dup);
 			}
 		}
+		f->reused = reused;
+		f->t_conn = GetTickCount();
 		c->uses += (c->uses >= 0) ? 1 : 0;
 		if (run_on_conn(f, c, reused, &reusable) == RR_RETRY) {
 			conn_destroy(c, false);
@@ -1115,6 +1127,7 @@ static DWORD WINAPI worker(LPVOID arg)
 {
 	struct xf *f = arg;
 	run_request(f);
+	f->t_end = GetTickCount();
 	EnterCriticalSection(&g_lock);
 	if (f->result == XR_RUNNING) {
 		f->result = XR_ERROR;
@@ -1311,6 +1324,7 @@ static bool xf_start(void *vf)
 	f->req = b;
 	f->req_len = bl;
 
+	f->t0 = GetTickCount();
 	f->refs = 2;   /* NetSurf + thread */
 	f->thread = CreateThread(NULL, 192 * 1024, worker, f, 0, NULL);
 	if (f->thread == NULL) {
@@ -1521,7 +1535,16 @@ static void xf_poll_one(struct xf *f)
 			msg.data.error = err;
 			break;
 		}
-		NSLOG(netsurf, INFO, "fetch %s: resultado %d %s", nsurl_access(f->url), result, err);
+		{
+			/* diagnostico: tempos de cada pedido (ver NETSURF.LOG) */
+			uint32_t te = f->t_end ? f->t_end : GetTickCount();
+			NSLOG(netsurf, INFO, "[REDE] %s cod=%ld res=%d %ub %ums (ligacao %s +%ums, tls %ums, 1o byte +%ums) %s",
+			      nsurl_access(f->url), f->http_code, result, (unsigned)f->bytes_in,
+			      (unsigned)(te - f->t0), f->reused ? "reutilizada" : "nova",
+			      f->t_conn ? (unsigned)(f->t_conn - f->t0) : 0, (unsigned)f->t_tls,
+			      f->t_first ? (unsigned)(f->t_first - f->t0) : 0, err);
+			nsx_perf_fetch_done(te - f->t0, f->bytes_in, result == XR_OK);
+		}
 		send_msg(f, &msg);
 		finish(f);
 	}

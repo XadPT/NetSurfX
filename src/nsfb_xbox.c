@@ -38,6 +38,7 @@
 
 #include "nsfb_xbox.h"
 #include "xbox_kbd.h"
+#include "xbox_perf.h"
 
 #define STICK_DEADZONE   7000
 #define TRIGGER_ON       20000
@@ -396,10 +397,12 @@ static void present(nsfb_t *nsfb, xb_priv *p)
 	p->dirty = false;
 	if (vfb == NULL || b.x1 <= b.x0 || b.y1 <= b.y0) return;
 	size_t len = (size_t)(b.x1 - b.x0) * 4;
+	uint32_t t0 = nsx_perf_us();
 	for (int y = b.y0; y < b.y1; y++) {
 		memcpy(vfb + (size_t)(y + p->oy) * vpitch + (size_t)(b.x0 + p->ox) * 4,
 		       p->fb + (size_t)y * p->pitch + (size_t)b.x0 * 4, len);
 	}
+	nsx_perf_present(nsx_perf_us() - t0);
 }
 
 static void mark(xb_priv *p, const nsfb_bbox_t *box)

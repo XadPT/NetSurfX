@@ -20,10 +20,12 @@ static bool file_exists(const char *p)
 	return GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
 }
 
+/* versao de testes: o registo esta ligado por omissao; um NODEBUG.TXT ao
+ * lado do default.xbe desliga-o */
 bool nsx_debug_enabled(void)
 {
 	static int cached = -1;
-	if (cached < 0) cached = file_exists("D:\\DEBUG.TXT") ? 1 : 0;
+	if (cached < 0) cached = file_exists("D:\\NODEBUG.TXT") ? 0 : 1;
 	return cached == 1;
 }
 

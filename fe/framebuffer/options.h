@@ -53,6 +53,8 @@ NSOPTION_BOOL(xbox_hd, false)
 NSOPTION_BOOL(xbox_kbd_us, false)
 /** D-pad salta entre links e campos (false: desloca a pagina como setas) */
 NSOPTION_BOOL(xbox_dpad_links, true)
+/** estatisticas (memoria, tempos) na barra de estado - versao de testes: ligado */
+NSOPTION_BOOL(xbox_show_stats, true)
 /** identificacao: 0 NetSurf, 1 telemovel, 2 telemovel antigo, 3 browser de texto */
 NSOPTION_INTEGER(xbox_ua_mode, 0)
 /** pasta dos downloads */

@@ -44,6 +44,7 @@
 #include "nsfb_xbox.h"
 #include "xbox_net.h"
 #include "xbox_kbd.h"
+#include "xbox_perf.h"
 
 extern fbtk_widget_t *fbtk;
 
@@ -203,6 +204,7 @@ static enum ui_btn ui_wait_button(void)
 	SDL_Event ev;
 	for (;;) {
 		nsx_check_igr();
+		nsx_heartbeat("menu / teclado no ecra (a espera de um botao)");
 		nsx_usbhid_poll();
 		if (nsx_kbd_pending()) {
 			if (g_ui_raw_kbd) return UB_KBD;

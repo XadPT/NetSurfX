@@ -16,6 +16,11 @@ SKIP = {'src/xbox_fastmem.c', 'src/xbox_usbhid.c', 'src/xbox_iconv_gz.c', 'src/x
 common = ['-O1', '-g', '-std=gnu99', '-w', '-Werror=implicit-function-declaration', '-Werror=int-conversion', '-Werror=incompatible-pointer-types', '-I' + HT + '/shim', '-D_GNU_SOURCE',
           '-DMBEDTLS_USER_CONFIG_FILE="ns_mbedtls_config.h"', '-I' + PRJ + '/mbedtls_cfg', '-I' + MB + '/include']
 
+import glob as _g
+HDR_MTIME = max([os.path.getmtime(h) for d in ('fe/framebuffer', 'fe/framebuffer/fbtk', 'nsshim', 'src', 'gen')
+                 for h in _g.glob(os.path.join('/home/claude/netsurfx', d, '*.h'))] +
+                [os.path.getmtime(h) for h in _g.glob('/home/claude/hosttest/shim/*.h')] + [0])
+
 def run(cmd, cwd=None):
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     return r.returncode, r.stderr
@@ -23,7 +28,7 @@ def run(cmd, cwd=None):
 def build_objs(items, flags, tag):
     def one(src):
         obj = OUT + '/' + tag + '_' + src.replace('/', '_').replace('..', '').rsplit('.', 1)[0] + '.o'
-        if os.path.exists(obj) and os.path.getmtime(obj) > os.path.getmtime(src) and '--force' not in sys.argv:
+        if os.path.exists(obj) and os.path.getmtime(obj) > max(os.path.getmtime(src), HDR_MTIME) and '--force' not in sys.argv:
             return obj, None
         rc, err = run(['gcc'] + flags + ['-c', '-o', obj, src], cwd=NS)
         return obj, (err if rc else None)

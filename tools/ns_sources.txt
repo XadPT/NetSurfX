@@ -201,4 +201,5 @@ src/xbox_iconv_gz.c
 src/xbox_woff.c
 src/xbox_fastmem.c
 src/xbox_kbd.c
+src/xbox_perf.c
 src/xbox_usbhid.c

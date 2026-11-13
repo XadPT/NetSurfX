@@ -77,6 +77,9 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "framebuffer/xbox_ui.h"
 #include "xbox_kbd.h"
 #include "xbox_download.h"
+#include "xbox_perf.h"
+
+#define NSX_VERSION "0.7.1-testes"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -601,8 +604,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
  */
 static bool nslog_stream_configure(FILE *fptr)
 {
-	/* tampao grande: escrever no disco da Xbox linha a linha e muito lento */
-	setvbuf(fptr, NULL, _IOFBF, 64 * 1024);
+	/* tampao: escrever no disco da Xbox linha a linha e muito lento; o
+	 * ciclo principal despeja-o a cada segundo (nsx_log_tick) */
+	setvbuf(fptr, NULL, _IOFBF, 16 * 1024);
+	nsx_log_set_fp(fptr);
 
 	return true;
 }
@@ -664,6 +669,34 @@ static void fb_zoom(struct gui_window *gw, float delta)
 
 static void widget_scroll_y(struct gui_window *gw, int y, bool abs);
 static void widget_scroll_x(struct gui_window *gw, int x, bool abs);
+
+/* ------------------------------------------------------------------ estatisticas no ecra */
+
+static bool g_stats_dirty;
+static uint32_t g_stats_last;
+
+/* com a opcao ligada, a barra de estado mostra memoria e tempos quando o
+ * browser esta parado (a cada 2 s, ou logo a seguir a carregar uma pagina) */
+static void fb_stats_tick(void)
+{
+	struct gui_window *gw = fb_current();
+	uint32_t now = GetTickCount();
+	char buf[200];
+	static char last[200];
+	const char *cur;
+	if (gw == NULL || !nsoption_bool(xbox_show_stats)) return;
+	if (!g_stats_dirty && now - g_stats_last < 3000) return;
+	if (nsx_dl_poll(NULL) == NSX_DL_RUNNING) return;   /* a barra mostra o download */
+	/* actualizacao periodica so se a barra ainda mostrar as estatisticas
+	 * (nao apaga o endereco do link por baixo do ponteiro, etc.) */
+	cur = fbtk_get_text(gw->status);
+	if (!g_stats_dirty && (cur == NULL || strcmp(cur, last) != 0)) return;
+	g_stats_last = now;
+	g_stats_dirty = false;
+	nsx_perf_status(buf, sizeof buf);
+	snprintf(last, sizeof last, "%s", buf);
+	fbtk_set_text(gw->status, buf);
+}
 
 /* ------------------------------------------------------------------ downloads */
 
@@ -1061,7 +1094,7 @@ static void fb_save_choices(void)
 
 static void fb_settings_menu(struct gui_window *gw)
 {
-	enum { S_SEARCH, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_CLEAR, S_COUNT };
+	enum { S_SEARCH, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
 	char lbl[S_COUNT][160];
 	const char *labels[S_COUNT];
 	int sel = 0, dir;
@@ -1080,6 +1113,7 @@ static void fb_settings_menu(struct gui_window *gw)
 			snprintf(lbl[S_UA], sizeof lbl[0], "Vers\xc3\xa3o dos sites:  %s", uan[(m >= 0 && m < NSX_UA_MODES) ? m : 0]);
 		}
 		snprintf(lbl[S_DPAD], sizeof lbl[0], "D-pad:  %s", nsoption_bool(xbox_dpad_links) ? "saltar entre links" : "deslocar a p\xc3\xa1gina");
+		snprintf(lbl[S_STATS], sizeof lbl[0], "Estat\xc3\xadsticas no ecr\xc3\xa3:  %s", onoff(nsoption_bool(xbox_show_stats)));
 		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Pasta dos downloads:  %s", nsoption_charp(xbox_download_dir));
 		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Mostrar imagens:  %s", onoff(nsoption_bool(foreground_images)));
 		snprintf(lbl[S_ADS], sizeof lbl[0], "Bloquear an\xc3\xbancios:  %s", onoff(nsoption_bool(block_advertisements)));
@@ -1116,6 +1150,9 @@ static void fb_settings_menu(struct gui_window *gw)
 			nsx_set_ua_mode(m % NSX_UA_MODES);
 			break;
 		}
+		case S_STATS:
+			nsoption_set_bool(xbox_show_stats, !nsoption_bool(xbox_show_stats));
+			break;
 		case S_DPAD:
 			nsoption_set_bool(xbox_dpad_links, !nsoption_bool(xbox_dpad_links));
 			nsfb_xbox_set_dpad_links(nsoption_bool(xbox_dpad_links));
@@ -1457,6 +1494,7 @@ static void framebuffer_run(void)
 		/* run the scheduler and discover how long to wait for
 		 * the next event.
 		 */
+		nsx_heartbeat("agendador (scheduler)");
 		timeout = schedule_run();
 
 		/* if redraws are pending do not wait for event,
@@ -1469,15 +1507,24 @@ static void framebuffer_run(void)
 		if (timeout < 0 || timeout > 50)
 			timeout = 50;
 
+		nsx_heartbeat("eventos");
 		if (fbtk_event(fbtk, &event, timeout)) {
 			if ((event.type == NSFB_EVENT_CONTROL) &&
 			    (event.value.controlcode ==  NSFB_CONTROL_QUIT))
 				fb_complete = true;
 		}
 
+		nsx_heartbeat("comando/teclado");
 		fb_handle_xbox_input();
 
-		fbtk_redraw(fbtk);
+		nsx_heartbeat("redesenho");
+		if (fbtk_get_redraw_pending(fbtk)) {
+			uint32_t t = GetTickCount();
+			fbtk_redraw(fbtk);
+			nsx_perf_redraw(GetTickCount() - t);
+		}
+		nsx_log_tick();
+		fb_stats_tick();
 	}
 }
 
@@ -3049,11 +3096,14 @@ gui_window_event(struct gui_window *gw, enum gui_window_event event)
 
 	case GW_EVENT_START_THROBBER:
 		gui_window_start_throbber(gw);
+		nsx_perf_page_start(fbtk_get_text(gw->url));
 		if (gw->toolbar) fbtk_request_redraw(gw->toolbar);
 		break;
 
 	case GW_EVENT_STOP_THROBBER:
 		gui_window_stop_throbber(gw);
+		nsx_perf_page_done(fbtk_get_text(gw->url));
+		g_stats_dirty = true;
 		/* NetSurfX: algumas paginas deixavam os icones da barra por desenhar */
 		if (gw->toolbar) fbtk_request_redraw(gw->toolbar);
 		break;
@@ -3143,15 +3193,22 @@ main(int argc, char** argv)
 	respaths[1] = strdup("D:\\res");
 	respaths[2] = strdup("D:\\res\\fonts");
 
-	/* diagnostico: com um DEBUG.TXT ao lado do default.xbe escreve NETSURF.LOG */
+	/* diagnostico (versao de testes: ligado; NODEBUG.TXT desliga): escreve
+	 * NETSURF.LOG; o da sessao anterior fica em NETSURF.OLD */
 	if (nsx_debug_enabled()) {
-		remove("D:\\NETSURF.LOG");   /* o NetSurf acrescenta: comeca sempre limpo */
+		remove("D:\\NETSURF.OLD");
+		rename("D:\\NETSURF.LOG", "D:\\NETSURF.OLD");
+		remove("D:\\NETSURF.LOG");
 		xargc = 3;
 		nslog_init(nslog_stream_configure, &xargc, xargv);
 	} else {
 		xargc = 1;
 		nslog_init(nslog_stream_configure, &xargc, nargv);
 	}
+
+	nsx_watch_start();
+	NSLOG(netsurf, INFO, "[NSX] NetSurfX %s, ecra %dx%d, memoria livre %u KB de %u KB",
+	      NSX_VERSION, vw0, vh0, (unsigned)nsx_mem_free_kb(), (unsigned)nsx_mem_total_kb());
 
 	/* user options setup */
 	ret = nsoption_init(set_defaults, &nsoptions, &nsoptions_default);

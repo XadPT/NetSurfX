@@ -246,6 +246,7 @@ static void run_script(void)
 			r[0] = (unsigned char)v; r[1] = (unsigned char)(signed char)dx; r[2] = (unsigned char)(signed char)dy;
 			nsx_mouse_feed_report(r, 4);
 		}
+		else if (!strcmp(a, "hang")) { usleep((useconds_t)atoi(b) * 1000); }   /* simula um bloqueio */
 		else if (!strcmp(a, "quit")) { fprintf(stderr, "[host] fim do guiao\n"); extern void nsx_return_to_dashboard(void); nsx_return_to_dashboard(); }
 		next_t = -1;
 	}
@@ -292,3 +293,12 @@ void nsx_net_describe(char *buf, size_t n) { snprintf(buf, n, "Rede: (teste no P
 /* USB na Xbox: no PC os relatorios vem do guiao (comandos key/mouse) */
 void nsx_usbhid_init(void) { }
 void nsx_usbhid_poll(void) { }
+
+BOOL QueryPerformanceFrequency(LARGE_INTEGER *f) { f->QuadPart = 1000000; return 1; }
+BOOL QueryPerformanceCounter(LARGE_INTEGER *c)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	c->QuadPart = (long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+	return 1;
+}

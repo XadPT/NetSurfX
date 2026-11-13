@@ -1,7 +1,24 @@
-NetSurfX v0.7 - browser NetSurf para a Xbox classica
+NetSurfX v0.7.1 (versao de testes) - browser NetSurf para a Xbox classica
 =====================================================
 Base: NetSurf 3.11 com as melhorias do port para a Switch
 (etonedemid/netsurf-switch), adaptado a Xbox.
+
+VERSAO DE TESTES (v0.7.1): DIAGNOSTICO LIGADO
+  Esta versao regista tudo o que e preciso para encontrar erros e medir o
+  desempenho, sem teres de fazer nada:
+  - NETSURF.LOG (ao lado do default.xbe): cada pedido de rede com tempos
+    ([REDE]), o tempo de cada pagina e a memoria livre ([PERF]), redesenhos
+    lentos e um resumo a cada 30 s. E gravado no disco a cada segundo, por
+    isso mesmo depois de um crash fica quase tudo. Ao arrancar, o registo
+    anterior passa a NETSURF.OLD - se a Xbox bloquear ou reiniciar, envia o
+    NETSURF.OLD logo a seguir. Para em 8 MB para nao encher o disco.
+  - NSX-BLOQUEIO.LOG: se o browser deixar de responder mais de 8 s, outra
+    parte do programa escreve aqui em que fase ficou preso e em que pagina.
+  - Barra de estado: memoria livre, tempo da ultima pagina, redesenho mais
+    lento e numero de pedidos (Start > Definicoes > Estatisticas no ecra).
+  Para mandar os ficheiros: tira-os da pasta do NetSurfX por FTP (o
+  dashboard tem servidor FTP) e envia-os. Para desligar o registo, cria um
+  ficheiro vazio NODEBUG.TXT ao lado do default.xbe.
 
 NOVO NA v0.7
   - D-pad salta de link em link (e entre campos de formularios), como nos
@@ -79,8 +96,9 @@ FICHEIROS
                   (bookmarks.txt/.html)
   cache\          cache em disco (pode apagar-se a vontade)
   data\Choices    opcoes (ver data\Choices.exemplo)
-  DEBUG.TXT       cria um ficheiro vazio com este nome ao lado do
-                  default.xbe para gerar um registo em NETSURF.LOG
+  NETSURF.LOG     registo de diagnostico desta sessao (ver em baixo)
+  NETSURF.OLD     registo da sessao anterior (util depois de um crash)
+  NSX-BLOQUEIO.LOG  so aparece se o browser ficar bloqueado mais de 8 s
   DASH.TXT        (opcional) caminho do teu dashboard para o IGR, ex.:
                   C:\xboxdash.xbe  (sem ele, a Xbox volta ao dashboard
                   normal passando pela animacao de arranque)
