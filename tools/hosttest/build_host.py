@@ -11,7 +11,7 @@ PFX  = os.environ.get('NSPFX', '/tmp/ns2prefix')
 OUT  = HT + '/obj2'
 os.makedirs(OUT, exist_ok=True)
 
-SKIP = {'src/xbox_fastmem.c', 'src/xbox_usbhid.c', 'src/xbox_iconv_gz.c', 'src/xbox_posix.c', 'src/xbox_png.c', 'src/xbox_net.c', 'content/handlers/image/jpeg.c'}
+SKIP = {'src/xbox_libc.c', 'src/xbox_fastmem.c', 'src/xbox_usbhid.c', 'src/xbox_iconv_gz.c', 'src/xbox_posix.c', 'src/xbox_png.c', 'src/xbox_net.c', 'content/handlers/image/jpeg.c'}
 
 common = ['-O1', '-g', '-std=gnu99', '-w', '-Werror=implicit-function-declaration', '-Werror=int-conversion', '-Werror=incompatible-pointer-types', '-I' + HT + '/shim', '-D_GNU_SOURCE',
           '-DMBEDTLS_USER_CONFIG_FILE="ns_mbedtls_config.h"', '-I' + PRJ + '/mbedtls_cfg', '-I' + MB + '/include']

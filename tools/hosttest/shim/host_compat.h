@@ -17,6 +17,9 @@ int nsx_hmkdir(const char *p, mode_t m);
 int nsx_hunlink(const char *p);
 gzFile nsx_hgzopen(const char *p, const char *m);
 char *nsx_hrealpath(const char *p, char *r);
+int nsx_hrename(const char *a, const char *b);
+int nsx_hremove(const char *p);
+int nsx_hrmdir(const char *p);
 #ifndef HOST_NO_MACROS
 #define fopen(p, m) nsx_fopen(p, m)
 #define stat(p, s) nsx_hstat(p, s)
@@ -25,5 +28,8 @@ char *nsx_hrealpath(const char *p, char *r);
 #define mkdir(p, m) nsx_hmkdir(p, m)
 #define unlink(p) nsx_hunlink(p)
 #define gzopen(p, m) nsx_hgzopen(p, m)
+#define rename(a, b) nsx_hrename(a, b)
+#define remove(p) nsx_hremove(p)
+#define rmdir(p) nsx_hrmdir(p)
 #endif
 #endif

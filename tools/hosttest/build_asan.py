@@ -2,19 +2,24 @@
 """Compila o NetSurfX para Linux (banco de testes) com o mesmo codigo-fonte da Xbox."""
 import subprocess, os, sys, glob, concurrent.futures as cf
 
-NS   = '/home/claude/ns-src/netsurf-all-3.11/netsurf'
-NSA  = '/home/claude/ns-src/netsurf-all-3.11'
+NSA  = os.environ.get('NSROOT', '/home/claude/ns2')
+NS   = NSA + '/netsurf'
 PRJ  = '/home/claude/netsurfx'
 HT   = '/home/claude/hosttest'
 MB   = '/home/claude/deps/mbedtls-3.6.2'
-PFX  = '/tmp/nsprefix'
-OUT  = HT + '/obj-asan'
+PFX  = os.environ.get('NSPFX', '/tmp/ns2prefix')
+OUT  = HT + '/obj2-asan'
 os.makedirs(OUT, exist_ok=True)
 
-SKIP = {'src/xbox_iconv_gz.c', 'src/xbox_posix.c', 'src/xbox_png.c', 'src/xbox_net.c', 'content/handlers/image/jpeg.c'}
+SKIP = {'src/xbox_libc.c', 'src/xbox_fastmem.c', 'src/xbox_usbhid.c', 'src/xbox_iconv_gz.c', 'src/xbox_posix.c', 'src/xbox_png.c', 'src/xbox_net.c', 'content/handlers/image/jpeg.c'}
 
-common = ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-std=gnu99', '-w', '-Werror=implicit-function-declaration', '-Werror=int-conversion', '-Werror=incompatible-pointer-types', '-I' + HT + '/shim', '-D_GNU_SOURCE',
+common = ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-DNSX_SMALL_WEBFONTS', '-std=gnu99', '-w', '-Werror=implicit-function-declaration', '-Werror=int-conversion', '-Werror=incompatible-pointer-types', '-I' + HT + '/shim', '-D_GNU_SOURCE',
           '-DMBEDTLS_USER_CONFIG_FILE="ns_mbedtls_config.h"', '-I' + PRJ + '/mbedtls_cfg', '-I' + MB + '/include']
+
+import glob as _g
+HDR_MTIME = max([os.path.getmtime(h) for d in ('fe/framebuffer', 'fe/framebuffer/fbtk', 'nsshim', 'src', 'gen')
+                 for h in _g.glob(os.path.join('/home/claude/netsurfx', d, '*.h'))] +
+                [os.path.getmtime(h) for h in _g.glob('/home/claude/hosttest/shim/*.h')] + [0])
 
 def run(cmd, cwd=None):
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
@@ -23,7 +28,7 @@ def run(cmd, cwd=None):
 def build_objs(items, flags, tag):
     def one(src):
         obj = OUT + '/' + tag + '_' + src.replace('/', '_').replace('..', '').rsplit('.', 1)[0] + '.o'
-        if os.path.exists(obj) and os.path.getmtime(obj) > os.path.getmtime(src) and '--force' not in sys.argv:
+        if os.path.exists(obj) and os.path.getmtime(obj) > max(os.path.getmtime(src), HDR_MTIME) and '--force' not in sys.argv:
             return obj, None
         rc, err = run(['gcc'] + flags + ['-c', '-o', obj, src], cwd=NS)
         return obj, (err if rc else None)
@@ -61,7 +66,7 @@ nsflags = common + ['-include', HT + '/shim/host_compat.h',
     '-I' + NS + '/frontends', '-I' + NS + '/content/handlers', '-I' + PFX + '/include',
     '-I' + NSA + '/libnsfb/src', '-I' + NSA + '/libnsfb/include',
     '-I/usr/include/freetype2', '-I/usr/include/libpng16',
-    '-DWITH_UTF8PROC', '-DWITH_PNG', '-DWITH_BMP', '-DWITH_GIF', '-DWITH_XBOXFETCH', '-DFB_USE_FREETYPE',
+    '-DWITH_UTF8PROC', '-DWITH_PNG', '-DWITH_BMP', '-DWITH_GIF', '-DWITH_XBOXFETCH', '-DWITH_NS_SVG', '-DWITH_WEBP', '-I/home/claude/netsurfx/third_party/libwebp/src', '-DFB_USE_FREETYPE',
     '-Dnsframebuffer', '-Dsmall', '-DSTMTEXPR=1',
     '-DNETSURF_UA_FORMAT_STRING="Mozilla/5.0 (%s) NetSurf/%d.%d"', '-DNETSURF_HOMEPAGE="about:welcome"',
     '-DNETSURF_LOG_LEVEL=INFO', '-DNETSURF_BUILTIN_LOG_FILTER="(level:WARNING)"',
@@ -81,10 +86,10 @@ plat_objs, f = build_objs([HT + '/host_platform.c'], common + ['-I/usr/include/l
 if total_fails:
     sys.exit('falhas: %d' % total_fails)
 
-libs = [PFX + '/lib/' + l for l in ('libdom.a', 'libhubbub.a', 'libcss.a', 'libparserutils.a', 'libwapcaplet.a',
+libs = [PFX + '/lib/' + l for l in ('libsvgtiny.a', 'libdom.a', 'libhubbub.a', 'libcss.a', 'libparserutils.a', 'libwapcaplet.a',
         'libnsbmp.a', 'libnsgif.a', 'libutf8proc.a', 'libnsutils.a')]
 cmd = ['gcc', '-g', '-fsanitize=address,undefined', '-o', HT + '/nsx-asan'] + ns_objs + nsfb_objs + mb_objs + plat_objs + libs + \
-      ['-Wl,--wrap=open', '-Wl,--wrap=realpath', '-lfreetype', '-lpng16', '-lz', '-lpthread', '-lm']
+      ['-Wl,--wrap=open', '-Wl,--wrap=realpath', '-lexpat', '/tmp/webphost/libwebp_nsx.a', '-lfreetype', '-lpng16', '-lz', '-lpthread', '-lm']
 rc, err = run(cmd)
 if rc:
     print('\n'.join(sorted(set(l for l in err.splitlines() if 'undefined' in l)))[:6000])

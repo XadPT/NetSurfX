@@ -1,0 +1,4 @@
+2500 tap BACK
+3200 shot w1_help.png
+3400 tap A
+4000 quit

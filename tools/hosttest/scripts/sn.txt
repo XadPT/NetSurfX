@@ -1,0 +1,16 @@
+3000 tap DOWN
+3300 shot n1.png
+3500 tap DOWN
+3800 shot n2.png
+4000 tap RIGHT
+4300 shot n3.png
+4500 tap DOWN
+4800 tap DOWN
+5100 shot n4.png
+5300 tap DOWN
+5700 shot n5.png
+5900 tap DOWN
+6400 shot n6.png
+6600 tap UP
+7000 shot n7.png
+7200 quit

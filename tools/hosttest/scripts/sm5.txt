@@ -1,0 +1,2 @@
+5000 shot m5_webp.png
+5200 quit

@@ -1,0 +1,27 @@
+3000 tap START
+3600 shot u1_menu.png
+3800 tap DOWN
+4000 tap DOWN
+4200 tap A
+6000 shot u2_history.png
+6200 tap START
+6800 tap DOWN
+7000 tap DOWN
+7200 tap DOWN
+7400 tap A
+8000 tap DOWN
+8300 tap A
+8600 tap START
+9800 shot u3_find.png
+10000 tap START
+10600 tap UP
+10800 tap UP
+11000 tap UP
+11300 shot u4_menu2.png
+11500 tap A
+12000 shot u5_settings.png
+12200 tap RIGHT
+12800 shot u6_settings2.png
+13000 tap B
+14500 shot u7_after.png
+14700 quit

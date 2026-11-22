@@ -1,0 +1,2 @@
+4000 shot c1.png
+15000 quit

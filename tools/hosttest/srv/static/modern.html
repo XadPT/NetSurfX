@@ -1,0 +1,23 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>CSS moderno</title>
+<style>
+:root{--verde:#107c10;--esp:10px}
+@font-face{font-family:"Teste";src:url(/static/wf.woff2) format("woff2"),url(/static/wf.woff) format("woff")}
+body{font-family:sans-serif;margin:8px;background:#f4f4f4}
+h1{font-size:20px;color:var(--verde);margin:0 0 6px}
+.grid{display:grid;grid-template-columns:1fr 2fr 1fr;gap:var(--esp)}
+.grid div{background:#fff;padding:8px;border-radius:10px;box-shadow:2px 3px 6px rgba(0,0,0,.4)}
+.grad{background:linear-gradient(90deg,#107c10,#9bf00b);color:#fff;padding:10px;margin:10px 0;border-radius:8px}
+.flex{display:flex;justify-content:space-between;gap:6px}
+.flex span{flex:1;background:#36c;color:#fff;padding:6px;text-align:center}
+.wf{font-family:"Teste",serif;font-size:22px}
+.calc{width:calc(50% - 20px);background:#fc6;padding:4px}
+</style></head><body>
+<h1>Teste de CSS moderno</h1>
+<div class="grid"><div>Grelha A</div><div>Grelha B (2fr)</div><div>Grelha C</div><div>D</div><div>E</div><div>F</div></div>
+<div class="grad">Gradiente linear + cantos redondos</div>
+<div class="flex"><span>flex 1</span><span>flex 2</span><span>flex 3</span></div>
+<p class="wf">Fonte web (@font-face) em itálico serifado</p>
+<p class="calc">calc(50% - 20px)</p>
+<p><img src="/static/logo.svg" width="120" height="60"> SVG externo
+<svg width="80" height="60" viewBox="0 0 80 60"><ellipse cx="40" cy="30" rx="36" ry="24" fill="#c33"/><polygon points="40,10 50,40 30,40" fill="#fc0"/></svg> SVG embutido</p>
+</body></html>

@@ -1,0 +1,4 @@
+4000 shot k1.png
+10000 tap X
+14000 shot k2.png
+14200 quit

@@ -1,0 +1,10 @@
+3000 tap DOWN
+3400 tap A
+4500 shot d1_confirm.png
+4700 tap A
+5600 shot d2_progress.png
+5800 tap START
+6300 shot d3_menu.png
+6500 tap B
+12000 shot d4_done.png
+12200 quit

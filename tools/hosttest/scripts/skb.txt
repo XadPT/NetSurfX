@@ -1,0 +1,21 @@
+3000 key 06 0
+3300 key 33 0
+3500 key 30 0
+3600 key 04 0
+3800 key 1F 2
+4000 key 1F 64
+4200 key 32 0
+4300 key 12 0
+4500 shot v1_osk_kbd.png
+4700 key 2A 0
+4900 shot v2_osk_bksp.png
+5100 key 29 0
+5600 key 4E 0
+6200 shot v3_pgdn.png
+6400 key 0F 1
+7000 shot v4_ctrl_l.png
+7200 key 29 0
+7500 mouse -100,-60 0
+7600 mouse -100,-60 0
+7800 shot v5_mouse.png
+8000 quit

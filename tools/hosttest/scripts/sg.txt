@@ -1,0 +1,7 @@
+6000 shot g1_stats.png
+6200 tap DOWN
+6400 tap A
+9000 shot g2.png
+9200 hang 10000
+11000 shot g3.png
+11500 quit

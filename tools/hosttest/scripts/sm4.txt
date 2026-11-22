@@ -1,0 +1,2 @@
+8000 shot m4_fonts.png
+8200 quit

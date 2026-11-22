@@ -1,0 +1,9 @@
+2000 tap Y
+2500 tap DOWN
+2600 tap DOWN
+2700 tap DOWN
+2900 tap LEFT
+3000 press A
+3150 release A
+4000 shot 80_after_ir.png
+4100 quit

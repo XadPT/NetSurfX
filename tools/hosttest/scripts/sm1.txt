@@ -1,0 +1,2 @@
+5000 shot m1_modern.png
+5200 quit

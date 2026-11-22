@@ -1,0 +1,2 @@
+5000 shot cmp_libc/B_webp.png
+5200 quit

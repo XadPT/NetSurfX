@@ -1,0 +1,2 @@
+6000 shot a_modern.png
+6500 quit

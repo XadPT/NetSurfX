@@ -1,0 +1,5 @@
+2500 shot 90_noscroll.png
+2600 axis RIGHTY 30000
+3200 axis RIGHTY 0
+3500 shot 91_scrolled.png
+3600 quit

@@ -1,0 +1,10 @@
+2000 ptr 300 27
+2100 tap A
+2600 tap DOWN
+2700 tap DOWN
+2800 tap DOWN
+2900 tap LEFT
+3000 press A
+3150 release A
+4000 shot 81_urlbar_after_ir.png
+4100 quit

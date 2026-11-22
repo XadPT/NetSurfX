@@ -1,0 +1,13 @@
+2500 shot f0.png
+2700 tap START
+3000 tap UP
+3100 tap UP
+3200 tap UP
+3400 tap A
+3800 tap DOWN
+4000 tap A
+4300 tap A
+4600 shot f1_settings.png
+4800 tap B
+6500 shot f2_ua.png
+6700 quit

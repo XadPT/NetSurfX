@@ -1,0 +1,16 @@
+3000 tap DOWN
+3400 tap A
+4500 shot e1_confirm.png
+4700 tap A
+6000 tap START
+6400 tap DOWN
+6500 tap DOWN
+6600 tap DOWN
+6700 tap DOWN
+6800 tap DOWN
+7000 shot e2_menu.png
+7200 tap A
+7600 tap DOWN
+7700 tap A
+9000 shot e3_cancel.png
+9200 quit

@@ -17,7 +17,8 @@ LONG = "".join("<p>Linha de texto numero %d para testar o scroll da pagina. Acen
 
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    def log_message(self, *a): sys.stderr.write("[srv] %s %s\n" % (self.command, self.path))
+    timeout = 4   # fecha ligacoes paradas (testa o keep-alive com ligacoes mortas)
+    def log_message(self, *a): sys.stderr.write("[srv] %s %s porta=%d\n" % (self.command, self.path, self.client_address[1]))
     def send_page(self, title, body, extra_headers=(), mode="plain", status=200):
         data = PAGE.format(title=title, body=body, long=LONG).encode("utf-8")
         self.send_response(status)
@@ -73,6 +74,36 @@ class H(http.server.BaseHTTPRequestHandler):
         elif u.path == "/get":
             q = urllib.parse.parse_qs(u.query).get("q", [""])[0]
             self.send_page("Resultado GET", "Pesquisaste: <b>%s</b>" % q)
+        elif u.path == "/ua":
+            d = ("<html><body><p>UA: " + self.headers.get("User-Agent", "") + "</p><p>AE: " + self.headers.get("Accept-Encoding", "") + "</p></body></html>").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/html"); self.send_header("Content-Length", str(len(d))); self.end_headers(); self.wfile.write(d)
+        elif u.path == "/dl/redir":
+            self.send_response(302); self.send_header("Location", "/dl/ficheiro.zip"); self.send_header("Content-Length", "0"); self.end_headers()
+        elif u.path == "/dl/ficheiro.zip":
+            import os, time
+            if not os.path.exists("dl.bin"):
+                open("dl.bin", "wb").write(os.urandom(3 * 1024 * 1024 + 123))
+            d = open("dl.bin", "rb").read()
+            self.send_response(200); self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="Homebrew Ação: teste/v1?.zip"')
+            self.send_header("Content-Length", str(len(d))); self.end_headers()
+            for i in range(0, len(d), 65536):
+                self.wfile.write(d[i:i+65536]); time.sleep(0.3 if "slow" in (u.query or "") else 0.02)
+        elif u.path == "/dropimg":
+            # responde e depois fecha a ligacao SEM avisar (sem Connection: close)
+            import time
+            png = open("static/t.webp", "rb").read()
+            self.send_response(200); self.send_header("Content-Type", "image/webp"); self.send_header("Content-Length", str(len(png))); self.end_headers(); self.wfile.write(png); self.wfile.flush()
+            time.sleep(0.4)
+            self.close_connection = True
+        elif u.path.startswith("/static/"):
+            import os, mimetypes
+            fn = os.path.join("static", os.path.basename(u.path))
+            if not os.path.exists(fn):
+                self.send_page("404", "Nao existe", status=404); return
+            d = open(fn, "rb").read()
+            ct = {".svg": "image/svg+xml", ".html": "text/html; charset=utf-8", ".css": "text/css", ".ttf": "font/ttf", ".webp": "image/webp", ".woff": "font/woff"}.get(os.path.splitext(fn)[1], "application/octet-stream")
+            self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(d))); self.send_header("Cache-Control", "max-age=3600"); self.send_header("Last-Modified", "Thu, 01 Oct 2026 10:00:00 GMT"); self.end_headers(); self.wfile.write(d)
         elif u.path == "/img.png":
             png = open("img.png", "rb").read()
             self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(png))); self.end_headers(); self.wfile.write(png)

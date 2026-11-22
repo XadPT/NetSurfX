@@ -1,0 +1,5 @@
+4000 shot t_welcome.png
+4100 press RTRIGGER
+4200 release RTRIGGER
+5000 shot t_welcome_2.png
+5200 quit
