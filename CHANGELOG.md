@@ -2,6 +2,27 @@
 
 All dates are 2026.
 
+## v0.8.0 (test build) — 23 Nov
+Stability
+- Root cause of the Google freeze addressed: nxdk's `LWIP_PLATFORM_ASSERT` asserts its message string (always true), so when the kernel pool allocation in the NIC receive DPC failed, `rx_callback` wrote through a null pointer at DISPATCH_LEVEL. The frame is now dropped and returned to the NIC (patch in `tools/patch_nxdk.py`).
+- Receive path sized for a browser: 128 NIC receive buffers and a 24-segment TCP window (was 64 buffers shared by every socket with a 45-segment window each). `LWIP_DEBUG` compiled out.
+- Unhandled exceptions: nxdk's `WinapiThreadStartup` (every thread, `main()` included) now runs under an SEH frame calling the filter set with a new `SetUnhandledExceptionFilter`. NetSurfX's filter writes `NSX-CRASH.LOG` (exception, registers, likely return addresses), shows a crash screen and reboots to the dashboard; at DISPATCH_LEVEL it never touches the file system. `tools/symbolize.py` maps the addresses with `nsx.map`.
+- Logs are durable: `NtFlushBuffersFile` after `fflush` (every 2 s and on every page load/event), so `NETSURF.OLD` survives a freeze or power cycle.
+- Watchdog: on-screen notice after 8 s, `NSX-HANG.LOG`, automatic return to the dashboard after 3 minutes. Heartbeat/phase are atomics (TSan-clean).
+- `_xbox_assert` is IRQL-aware: no file I/O at DISPATCH_LEVEL (deferred to the main loop).
+- NetSurf fixes: find-in-page leaked its match-list head; contents destroyed without being closed leaked their search context; empty resources passed `NULL` to `memcpy`.
+
+Google
+- Google Search (and the Google home page) is answered locally with a redirect to DuckDuckGo HTML, keeping the query (`src/xbox_rewrite.c`, unit-tested). Setting: *Google searches*.
+
+Performance
+- TLS: P-256 offered first (fastest key exchange in mbedTLS on a 32-bit P3); TLS 1.3 session tickets captured after the handshake for resumption.
+- Memory cache sized from free RAM at start-up (an eighth, 3–8 MB); `memory_cache_size:0` = automatic.
+
+English
+- The whole UI, help, on-screen keyboard (now with Western European accents), home page, README, settings and logs are in English. `Accept-Language: en-US, en`, US keyboard layout by default. Log tags are now `[NET]`, `[PERF]`, `[ERROR]`; files `NSX-HANG.LOG`, `NSX-ERROR.LOG`, `NSX-CRASH.LOG`, `data\CLEAR.TXT`.
+- Search engines: DuckDuckGo (HTML, default), DuckDuckGo Lite, Wikipedia (en), Mojeek, FrogFind.
+
 ## v0.7.2 (test build) — 13 Nov
 - Fixed a hard freeze ("Assertion failed … strtof") on pages with modern CSS: nxdk's `strtod`/`strtof`/`strtold`/`atof` are `assert(0)` stubs. NetSurfX now ships its own (tested against glibc on 200,000 inputs), plus `lroundf`/`llroundf` used by SVG rendering.
 - The nxdk/pdclib `printf` family ignores `%f/%e/%g` without consuming the argument, which shifted every following argument. Replaced with stb_sprintf (public domain).

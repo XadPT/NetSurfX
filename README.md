@@ -2,7 +2,7 @@
 
 **A modern-CSS web browser for the original Xbox (2001)**, based on [NetSurf](https://www.netsurf-browser.org/) and built with the open-source [nxdk](https://github.com/XboxDev/nxdk) toolchain — no Microsoft XDK required.
 
-> **Status: active development / test builds.** NetSurfX runs on real hardware (tested on a retail console over wired Ethernet). The current builds (v0.7.x) ship with diagnostics enabled by default. A hard freeze after a Google search is under investigation — see [Known issues](#known-issues) and [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status: active development / test builds.** NetSurfX runs on real hardware (tested on a retail console over wired Ethernet). The current builds (v0.8.x) ship with diagnostics enabled by default. The fix for the hard freeze after a Google search is being verified on hardware; see [Known issues](#known-issues) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 As far as we know, NetSurfX is the most capable browser the original Xbox has had: the only other documented one, LinksBoks (a Links port), has no HTTPS.
 
@@ -75,11 +75,10 @@ Outline:
 
 ## Known issues
 
-- **Hard freeze after a Google search, with no log written** (v0.7.2). Google has required JavaScript since January 2025, so its pages cannot work anyway. The most likely cause is memory exhaustion inside the network driver's DPC path. The capture and fix plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
+- **Hard freeze after a Google search, with no log written** (v0.7.2). The likely cause, a null-pointer write in the network driver's receive DPC when memory ran out, is fixed in v0.8.0, and Google searches now go to DuckDuckGo HTML (Google Search requires JavaScript). Awaiting confirmation on hardware; v0.8.0 also adds crash/hang capture that survives a power cycle.
 - No JavaScript (planned: QuickJS, off by default).
 - No video or audio playback.
 - 720p/1080i depend on the console region and AV pack; PAL consoles may be limited to 480 lines.
-- The UI is currently in Portuguese; it is being switched to English for the next release.
 
 ## Documentation
 

@@ -79,7 +79,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_download.h"
 #include "xbox_perf.h"
 
-#define NSX_VERSION "0.7.2-testes"
+#define NSX_VERSION "0.8.0-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -542,16 +542,28 @@ process_cmdline(int argc, char** argv)
  * @param defaults The option table to update.
  * @return error status.
  */
+/* memory cache sized from the RAM actually free at start-up: an eighth of
+ * it, between 3 and 8 MB (64 MB console: ~6 MB; 128 MB console: 8 MB) */
+static int auto_memory_cache_size(void)
+{
+	uint32_t free_kb = nsx_mem_free_kb();
+	uint32_t kb = free_kb / 8;
+	if (free_kb == 0) kb = 6 * 1024;
+	if (kb < 3 * 1024) kb = 3 * 1024;
+	if (kb > 8 * 1024) kb = 8 * 1024;
+	return (int)(kb * 1024);
+}
+
 static nserror set_defaults(struct nsoption_s *defaults)
 {
 	/* Set defaults for absent option strings */
 	nsoption_setnull_charp(cookie_file, strdup("D:\\data\\Cookies"));
 	nsoption_setnull_charp(cookie_jar, strdup("D:\\data\\Cookies"));
 	nsoption_setnull_charp(homepage_url, strdup("file:///D:/res/home.html"));
-	nsoption_setnull_charp(accept_language, strdup("pt-PT, pt, en"));
+	nsoption_setnull_charp(accept_language, strdup("en-US, en"));
 
 	/* Xbox: 64 MB de RAM e um CPU de 733 MHz */
-	nsoption_set_int(memory_cache_size, 6 * 1024 * 1024);
+	nsoption_set_int(memory_cache_size, auto_memory_cache_size());
 	nsoption_set_int(max_fetchers, 6);
 	nsoption_set_int(max_fetchers_per_host, 3);
 	/* cache em disco (D:\cache, ao lado do default.xbe): 64 MB chegam e
@@ -635,7 +647,7 @@ static void fb_go_url_bw(struct browser_window *bw, const char *text)
 		 strncmp(t, "about:", 6) == 0 || strncmp(t, "localhost", 9) == 0);
 	err = search_web_omni(t, looks_like_url ? SEARCH_WEB_OMNI_NONE : SEARCH_WEB_OMNI_SEARCHONLY, &url);
 	if (err != NSERROR_OK) {
-		nsx_toast("Endere\xc3\xa7o inv\xc3\xa1lido");
+		nsx_toast("Invalid address");
 		return;
 	}
 	browser_window_navigate(bw, url, NULL, BW_NAVIGATE_HISTORY, NULL, NULL, NULL);
@@ -683,7 +695,7 @@ static void fb_stats_tick(void)
 	if (nsx_assert_count() != seen_asserts) {
 		/* um erro interno foi registado (e ignorado): avisa uma vez */
 		if (seen_asserts == 0)
-			nsx_toast("Erro interno registado em NSX-ERRO.LOG (o browser continua)");
+			nsx_toast("Internal error logged to NSX-ERROR.LOG (browser keeps running)");
 		seen_asserts = nsx_assert_count();
 	}
 	struct gui_window *gw = fb_current();
@@ -764,7 +776,7 @@ static void fmt_size(char *b, size_t bs, long long v)
 {
 	if (v < 0) snprintf(b, bs, "?");
 	else if (v < 1024 * 1024) snprintf(b, bs, "%lld KB", (v + 1023) / 1024);
-	else snprintf(b, bs, "%lld,%lld MB", v / (1024 * 1024), (v % (1024 * 1024)) * 10 / (1024 * 1024));
+	else snprintf(b, bs, "%lld.%lld MB", v / (1024 * 1024), (v % (1024 * 1024)) * 10 / (1024 * 1024));
 }
 
 static struct gui_download_window *fb_download_create(struct download_context *ctx,
@@ -816,7 +828,7 @@ static void fb_download_tick(struct gui_window *gw)
 		fmt_size(sz, sizeof sz, g_dl_pending.size ? (long long)g_dl_pending.size : -1);
 
 		if (nsx_dl_poll(NULL) == NSX_DL_RUNNING) {
-			nsx_toast("J\xc3\xa1 h\xc3\xa1 um download em curso");
+			nsx_toast("A download is already in progress");
 			nsurl_unref(url);
 			return;
 		}
@@ -825,10 +837,10 @@ static void fb_download_tick(struct gui_window *gw)
 			char opt[200];
 			const char *items[2];
 			snprintf(q, sizeof q, "%s (%s)", name, sz);
-			snprintf(opt, sizeof opt, "Guardar em %s", dir);
+			snprintf(opt, sizeof opt, "Save to %s", dir);
 			items[0] = opt;
-			items[1] = "N\xc3\xa3o guardar";
-			k = nsx_menu(q, items, 2, 0, "Descarregar este ficheiro?", NULL);
+			items[1] = "Don\'t save";
+			k = nsx_menu(q, items, 2, 0, "Download this file?", NULL);
 		}
 		if (k == 0) {
 			k = 1;
@@ -842,9 +854,9 @@ static void fb_download_tick(struct gui_window *gw)
 				snprintf(path, sizeof path, "%s\\%.*s(%d)%s", dir, base, name, k, dot ? dot : "");
 			}
 			if (nsx_dl_begin(url, path, name))
-				nsx_toast("Download iniciado (v\xc3\xaa o progresso no menu Start)");
+				nsx_toast("Download started (progress is in the Start menu)");
 			else
-				nsx_toast("N\xc3\xa3o foi poss\xc3\xadvel iniciar o download");
+				nsx_toast("Could not start the download");
 		}
 		nsurl_unref(url);
 	}
@@ -858,7 +870,7 @@ static void fb_download_tick(struct gui_window *gw)
 			fmt_size(a, sizeof a, info.got);
 			if (info.total > 0) {
 				fmt_size(b, sizeof b, info.total);
-				snprintf(m, sizeof m, "Download: %s  %d%%  (%s de %s)", info.name,
+				snprintf(m, sizeof m, "Download: %s  %d%%  (%s of %s)", info.name,
 					 (int)(info.got * 100 / info.total), a, b);
 			} else {
 				snprintf(m, sizeof m, "Download: %s  %s", info.name, a);
@@ -868,11 +880,11 @@ static void fb_download_tick(struct gui_window *gw)
 	} else if (st == NSX_DL_DONE || st == NSX_DL_FAILED || st == NSX_DL_CANCELLED) {
 		char m[400];
 		if (st == NSX_DL_DONE)
-			snprintf(m, sizeof m, "Download conclu\xc3\xad" "do: %s", info.path);
+			snprintf(m, sizeof m, "Download complete: %s", info.path);
 		else if (st == NSX_DL_CANCELLED)
-			snprintf(m, sizeof m, "Download cancelado");
+			snprintf(m, sizeof m, "Download cancelled");
 		else
-			snprintf(m, sizeof m, "Download falhou: %s", info.err);
+			snprintf(m, sizeof m, "Download failed: %s", info.err);
 		nsx_dl_ack();
 		fbtk_set_text(gw->status, m);
 		nsx_toast(m);
@@ -1082,7 +1094,7 @@ static void fb_find(struct gui_window *gw, bool next)
 	char out[256];
 	bool submit;
 	if (!next || g_find[0] == 0) {
-		if (!nsx_osk_run("Procurar na p\xc3\xa1gina", g_find, out, sizeof out, false, &submit) ||
+		if (!nsx_osk_run("Find in page", g_find, out, sizeof out, false, &submit) ||
 		    out[0] == 0)
 			return;
 		snprintf(g_find, sizeof g_find, "%s", out);
@@ -1091,7 +1103,7 @@ static void fb_find(struct gui_window *gw, bool next)
 	browser_window_search(gw->bw, gw, SEARCH_FLAG_FORWARDS | SEARCH_FLAG_SHOWALL, g_find);
 }
 
-static const char *onoff(bool v) { return v ? "Sim" : "N\xc3\xa3o"; }
+static const char *onoff(bool v) { return v ? "On" : "Off"; }
 
 static void fb_save_choices(void)
 {
@@ -1101,7 +1113,7 @@ static void fb_save_choices(void)
 
 static void fb_settings_menu(struct gui_window *gw)
 {
-	enum { S_SEARCH, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
+	enum { S_SEARCH, S_GOOGLE, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
 	char lbl[S_COUNT][160];
 	const char *labels[S_COUNT];
 	int sel = 0, dir;
@@ -1113,24 +1125,26 @@ static void fb_settings_menu(struct gui_window *gw)
 		/* nome do motor actual: o da opcao, ou o primeiro da lista */
 		if (prov && prov[0]) cur = prov;
 		else search_web_iterate_providers(-1, &cur);
-		snprintf(lbl[S_SEARCH], sizeof lbl[0], "Motor de pesquisa:  %s", cur ? cur : "?");
+		snprintf(lbl[S_SEARCH], sizeof lbl[0], "Search engine:  %s", cur ? cur : "?");
+		snprintf(lbl[S_GOOGLE], sizeof lbl[0], "Google searches:  %s",
+			 nsoption_bool(xbox_google_redirect) ? "via DuckDuckGo" : "direct (needs JavaScript)");
 		{
-			static const char *const uan[] = { "Normal (NetSurf)", "Site m\xc3\xb3vel", "Leve (telem\xc3\xb3vel antigo)", "Texto (Links)" };
+			static const char *const uan[] = { "Desktop (NetSurf)", "Mobile", "Lite (old phone)", "Text (Links)" };
 			int m = nsoption_int(xbox_ua_mode);
-			snprintf(lbl[S_UA], sizeof lbl[0], "Vers\xc3\xa3o dos sites:  %s", uan[(m >= 0 && m < NSX_UA_MODES) ? m : 0]);
+			snprintf(lbl[S_UA], sizeof lbl[0], "Site version:  %s", uan[(m >= 0 && m < NSX_UA_MODES) ? m : 0]);
 		}
-		snprintf(lbl[S_DPAD], sizeof lbl[0], "D-pad:  %s", nsoption_bool(xbox_dpad_links) ? "saltar entre links" : "deslocar a p\xc3\xa1gina");
-		snprintf(lbl[S_STATS], sizeof lbl[0], "Estat\xc3\xadsticas no ecr\xc3\xa3:  %s", onoff(nsoption_bool(xbox_show_stats)));
-		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Pasta dos downloads:  %s", nsoption_charp(xbox_download_dir));
-		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Mostrar imagens:  %s", onoff(nsoption_bool(foreground_images)));
-		snprintf(lbl[S_ADS], sizeof lbl[0], "Bloquear an\xc3\xbancios:  %s", onoff(nsoption_bool(block_advertisements)));
-		snprintf(lbl[S_HD], sizeof lbl[0], "Ecr\xc3\xa3 720p (HD):  %s  (ao reiniciar)", onoff(nsoption_bool(xbox_hd)));
-		snprintf(lbl[S_KBD], sizeof lbl[0], "Teclado USB:  %s", nsoption_bool(xbox_kbd_us) ? "Americano (US)" : "Portugu\xc3\xaas");
-		snprintf(lbl[S_CLEAR], sizeof lbl[0], "Apagar hist\xc3\xb3rico, cookies e cache");
+		snprintf(lbl[S_DPAD], sizeof lbl[0], "D-pad:  %s", nsoption_bool(xbox_dpad_links) ? "jump between links" : "scroll the page");
+		snprintf(lbl[S_STATS], sizeof lbl[0], "On-screen statistics:  %s", onoff(nsoption_bool(xbox_show_stats)));
+		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Download folder:  %s", nsoption_charp(xbox_download_dir));
+		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Show images:  %s", onoff(nsoption_bool(foreground_images)));
+		snprintf(lbl[S_ADS], sizeof lbl[0], "Block ads:  %s", onoff(nsoption_bool(block_advertisements)));
+		snprintf(lbl[S_HD], sizeof lbl[0], "720p (HD) video:  %s  (after restart)", onoff(nsoption_bool(xbox_hd)));
+		snprintf(lbl[S_KBD], sizeof lbl[0], "USB keyboard layout:  %s", nsoption_bool(xbox_kbd_us) ? "US" : "Portuguese");
+		snprintf(lbl[S_CLEAR], sizeof lbl[0], "Clear history, cookies and cache");
 		for (int i = 0; i < S_COUNT; i++) labels[i] = lbl[i];
 
-		sel = nsx_menu("Defini\xc3\xa7\xc3\xb5" "es", labels, S_COUNT, sel,
-			       "A / \xe2\x97\x80 \xe2\x96\xb6 mudar   B voltar", &dir);
+		sel = nsx_menu("Settings", labels, S_COUNT, sel,
+			       "A / \xe2\x97\x80 \xe2\x96\xb6 change   B back", &dir);
 		if (sel < 0) break;
 		switch (sel) {
 		case S_SEARCH: {
@@ -1157,6 +1171,9 @@ static void fb_settings_menu(struct gui_window *gw)
 			nsx_set_ua_mode(m % NSX_UA_MODES);
 			break;
 		}
+		case S_GOOGLE:
+			nsoption_set_bool(xbox_google_redirect, !nsoption_bool(xbox_google_redirect));
+			break;
 		case S_STATS:
 			nsoption_set_bool(xbox_show_stats, !nsoption_bool(xbox_show_stats));
 			break;
@@ -1188,14 +1205,13 @@ static void fb_settings_menu(struct gui_window *gw)
 		case S_KBD:
 			nsoption_set_bool(xbox_kbd_us, !nsoption_bool(xbox_kbd_us));
 			nsx_kbd_set_layout(nsoption_bool(xbox_kbd_us) ? NSX_KBD_US : NSX_KBD_PT);
-	nsfb_xbox_set_dpad_links(nsoption_bool(xbox_dpad_links));
 			break;
 		case S_CLEAR: {
-			static const char *const yn[] = { "N\xc3\xa3o", "Sim, apagar ao reiniciar" };
-			if (nsx_menu("Apagar dados de navega\xc3\xa7\xc3\xa3o?", yn, 2, 0, NULL, NULL) == 1) {
-				FILE *f = fopen("D:\\data\\APAGAR.TXT", "w");
+			static const char *const yn[] = { "No", "Yes, clear on next start" };
+			if (nsx_menu("Clear browsing data?", yn, 2, 0, NULL, NULL) == 1) {
+				FILE *f = fopen("D:\\data\\CLEAR.TXT", "w");
 				if (f) { fputs("1\n", f); fclose(f); }
-				nsx_toast("Os dados s\xc3\xa3o apagados no pr\xc3\xb3ximo arranque");
+				nsx_toast("Browsing data will be cleared on the next start");
 			}
 			break;
 		}
@@ -1222,33 +1238,33 @@ static void fb_start_menu(struct gui_window *gw)
 	const char *home = nsoption_charp(homepage_url);
 
 #define ADD(id, txt) do { labels[n] = (txt); map[n] = (id); n++; } while (0)
-	ADD(M_HOME, "P\xc3\xa1gina inicial");
-	ADD(M_BOOKMARKS, "Favoritos");
-	ADD(M_HISTORY, "Hist\xc3\xb3rico");
-	ADD(M_FIND, "Procurar na p\xc3\xa1gina");
+	ADD(M_HOME, "Home page");
+	ADD(M_BOOKMARKS, "Bookmarks");
+	ADD(M_HISTORY, "History");
+	ADD(M_FIND, "Find in page");
 	if (g_find[0]) {
-		snprintf(find_next, sizeof find_next, "Procurar seguinte: \xc2\xab%.40s\xc2\xbb", g_find);
+		snprintf(find_next, sizeof find_next, "Find next: \xe2\x80\x9c%.40s\xe2\x80\x9d", g_find);
 		ADD(M_FIND_NEXT, find_next);
 	}
-	snprintf(zoom, sizeof zoom, "Zoom: %d%%  (A repor 100%%)",
+	snprintf(zoom, sizeof zoom, "Zoom: %d%%  (A resets to 100%%)",
 		 (int)(browser_window_get_scale(gw->bw) * 100.0f + 0.5f));
 	ADD(M_ZOOM, zoom);
 	if (nsx_dl_poll(&dli) == NSX_DL_RUNNING) {
 		if (dli.total > 0)
-			snprintf(dlabel, sizeof dlabel, "Download %d%%: %.30s  (A cancelar)",
+			snprintf(dlabel, sizeof dlabel, "Download %d%%: %.30s  (A to cancel)",
 				 (int)(dli.got * 100 / dli.total), dli.name);
 		else
-			snprintf(dlabel, sizeof dlabel, "Download: %.30s  (A cancelar)", dli.name);
+			snprintf(dlabel, sizeof dlabel, "Download: %.30s  (A to cancel)", dli.name);
 		ADD(M_DOWNLOAD, dlabel);
 	}
-	ADD(M_SETTINGS, "Defini\xc3\xa7\xc3\xb5" "es");
-	ADD(M_HELP, "Ajuda dos comandos");
-	ADD(M_EXIT, "Sair para o dashboard");
+	ADD(M_SETTINGS, "Settings");
+	ADD(M_HELP, "Controller help");
+	ADD(M_EXIT, "Exit to dashboard");
 #undef ADD
 
 	{
 		int dir;
-		sel = nsx_menu("NetSurfX", labels, n, 0, "A escolher   B fechar   \xe2\x97\x80 \xe2\x96\xb6 zoom", &dir);
+		sel = nsx_menu("NetSurfX", labels, n, 0, "A select   B close   \xe2\x97\x80 \xe2\x96\xb6 zoom", &dir);
 		if (sel < 0) return;
 		/* esquerda/direita so servem para o zoom */
 		if (dir != 0 && map[sel] != M_ZOOM)
@@ -1278,8 +1294,8 @@ static void fb_start_menu(struct gui_window *gw)
 			}
 			break;
 		case M_DOWNLOAD: {
-			static const char *const yn[] = { "N\xc3\xa3o", "Sim, cancelar" };
-			if (nsx_menu("Cancelar o download?", yn, 2, 0, NULL, NULL) == 1)
+			static const char *const yn[] = { "No", "Yes, cancel it" };
+			if (nsx_menu("Cancel the download?", yn, 2, 0, NULL, NULL) == 1)
 				nsx_dl_cancel();
 			break;
 		}
@@ -1290,8 +1306,8 @@ static void fb_start_menu(struct gui_window *gw)
 			nsx_help_show();
 			break;
 		case M_EXIT: {
-			static const char *const yn[] = { "N\xc3\xa3o", "Sim, sair" };
-			if (nsx_menu("Sair do NetSurfX?", yn, 2, 0, NULL, NULL) == 1)
+			static const char *const yn[] = { "No", "Yes, exit" };
+			if (nsx_menu("Exit NetSurfX?", yn, 2, 0, NULL, NULL) == 1)
 				nsx_return_to_dashboard();
 			break;
 		}
@@ -1306,7 +1322,7 @@ static void fb_url_osk(struct gui_window *gw, const char *initial)
 {
 	char out[2048];
 	bool submit;
-	if (nsx_osk_run("Endere\xc3\xa7o ou pesquisa", initial ? initial : "", out, sizeof out, false, &submit)) {
+	if (nsx_osk_run("Address or search", initial ? initial : "", out, sizeof out, false, &submit)) {
 		fbtk_set_text(gw->url, out);
 		fb_go_url(gw, out);
 	}
@@ -1324,8 +1340,8 @@ static void fb_handle_keyboard(struct gui_window *gw)
 			case 'l': fb_url_osk(gw, fbtk_get_text(gw->url)); break;
 			case 'r': browser_window_reload(bw, true); break;
 			case 'd':
-				nsx_toast(nsx_bookmark_add(bw) ? "Guardado nos favoritos" :
-					  "Esta p\xc3\xa1gina n\xc3\xa3o pode ser guardada");
+				nsx_toast(nsx_bookmark_add(bw) ? "Added to bookmarks" :
+					  "This page cannot be bookmarked");
 				break;
 			case 'f': fb_find(gw, false); break;
 			case 'g': fb_find(gw, true); break;
@@ -1469,8 +1485,8 @@ static void fb_handle_xbox_input(void)
 			nsx_help_show();
 			break;
 		case NSX_CMD_BOOKMARK:
-			nsx_toast(nsx_bookmark_add(gw->bw) ? "Guardado nos favoritos" :
-				  "Esta p\xc3\xa1gina n\xc3\xa3o pode ser guardada");
+			nsx_toast(nsx_bookmark_add(gw->bw) ? "Added to bookmarks" :
+				  "This page cannot be bookmarked");
 			break;
 		case NSX_CMD_PAGE_UP:
 			if (browser_window_key_press(gw->bw, NS_KEY_PAGE_UP) == false)
@@ -1501,7 +1517,7 @@ static void framebuffer_run(void)
 		/* run the scheduler and discover how long to wait for
 		 * the next event.
 		 */
-		nsx_heartbeat("agendador (scheduler)");
+		nsx_heartbeat("scheduler");
 		timeout = schedule_run();
 
 		/* if redraws are pending do not wait for event,
@@ -1514,17 +1530,17 @@ static void framebuffer_run(void)
 		if (timeout < 0 || timeout > 50)
 			timeout = 50;
 
-		nsx_heartbeat("eventos");
+		nsx_heartbeat("events");
 		if (fbtk_event(fbtk, &event, timeout)) {
 			if ((event.type == NSFB_EVENT_CONTROL) &&
 			    (event.value.controlcode ==  NSFB_CONTROL_QUIT))
 				fb_complete = true;
 		}
 
-		nsx_heartbeat("comando/teclado");
+		nsx_heartbeat("controller/keyboard");
 		fb_handle_xbox_input();
 
-		nsx_heartbeat("redesenho");
+		nsx_heartbeat("redraw");
 		if (fbtk_get_redraw_pending(fbtk)) {
 			uint32_t t = GetTickCount();
 			fbtk_redraw(fbtk);
@@ -1598,7 +1614,7 @@ static void fb_field_kbd_cb(void *pw)
 	browser_window_key_press(g->bw, NS_KEY_TEXT_END);
 	if (cur == NULL) return;
 
-	if (nsx_osk_run("Texto do campo  (Start = enviar)", cur, out, sizeof out, true, &submit)) {
+	if (nsx_osk_run("Text field  (Start = submit)", cur, out, sizeof out, true, &submit)) {
 		if (strcmp(out, cur) != 0) {
 			browser_window_key_press(g->bw, NS_KEY_SELECT_ALL);
 			browser_window_key_press(g->bw, NS_KEY_DELETE_LEFT);
@@ -3213,8 +3229,9 @@ main(int argc, char** argv)
 		nslog_init(nslog_stream_configure, &xargc, nargv);
 	}
 
+	nsx_diag_set_version(NSX_VERSION);
 	nsx_watch_start();
-	NSLOG(netsurf, INFO, "[NSX] NetSurfX %s, ecra %dx%d, memoria livre %u KB de %u KB",
+	NSLOG(netsurf, INFO, "[NSX] NetSurfX %s, screen %dx%d, free memory %u KB of %u KB",
 	      NSX_VERSION, vw0, vh0, (unsigned)nsx_mem_free_kb(), (unsigned)nsx_mem_total_kb());
 
 	/* user options setup */
@@ -3224,6 +3241,9 @@ main(int argc, char** argv)
 	}
 	/* opcoes do utilizador (opcional): D:\data\Choices */
 	nsoption_read("D:\\data\\Choices", nsoptions);
+	if (nsoption_int(memory_cache_size) <= 0)      /* 0 = automatic */
+		nsoption_set_int(memory_cache_size, auto_memory_cache_size());
+	NSLOG(netsurf, INFO, "[NSX] memory cache %d KB", nsoption_int(memory_cache_size) / 1024);
 	nsx_kbd_set_layout(nsoption_bool(xbox_kbd_us) ? NSX_KBD_US : NSX_KBD_PT);
 
 	/* message init */
@@ -3236,11 +3256,11 @@ main(int argc, char** argv)
 	/* "Apagar dados de navegacao" (pedido no menu): faz-se aqui, no arranque,
 	 * antes de a cache em disco ser aberta */
 	{
-		FILE *fl = fopen("D:\\data\\APAGAR.TXT", "r");
+		FILE *fl = fopen("D:\\data\\CLEAR.TXT", "r");
 		if (fl != NULL) {
 			fclose(fl);
 			nsx_clear_browsing_data();
-			remove("D:\\data\\APAGAR.TXT");
+			remove("D:\\data\\CLEAR.TXT");
 		}
 	}
 	/* cache em disco: as paginas e imagens ja vistas carregam do disco */
@@ -3265,7 +3285,7 @@ main(int argc, char** argv)
 	framebuffer_set_cursor(&pointer_image);
 
 	if (fb_font_init() == false)
-		die("Nao foi possivel carregar as fontes (res\\fonts)");
+		die("Could not load the fonts (res\\fonts)");
 
 	/* @font-face: o nucleo entrega as fontes descarregadas ao FreeType */
 	html_webfont_set_register_cb(fb_font_register_webfont);

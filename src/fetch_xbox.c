@@ -53,6 +53,7 @@
 
 #include "xbox_net.h"
 #include "xbox_perf.h"
+#include "xbox_rewrite.h"
 
 #define CONNECT_TIMEOUT_MS 20000
 #define IO_TIMEOUT_MS      30000
@@ -124,6 +125,7 @@ struct xf {
 	bool skip_body;              /* redirect/401/304 tratados: ignorar o resto */
 	long http_code;
 	char *location;
+	char *rewrite;               /* answered locally with a redirect here */
 	char *realm;
 	bool is_post;
 
@@ -209,7 +211,7 @@ static bool push_data(struct xf *f, const uint8_t *p, size_t n)
 		/* download: directo para o disco, sem guardar em memoria */
 		if (f->cancel) return false;
 		if (fwrite(p, 1, n, f->sink) != n) {
-			set_error(f, XR_ERROR, "Nao foi possivel escrever no disco (cheio?)");
+			set_error(f, XR_ERROR, "Could not write to the disk (is it full?)");
 			return false;
 		}
 		EnterCriticalSection(&g_lock);   /* 64 bits: nao atomico no Pentium III */
@@ -423,7 +425,7 @@ static bool tls_global_init(void)
 	}
 	LeaveCriticalSection(&g_lock);
 	if (g_tls_state != 1)
-		NSLOG(netsurf, ERROR, "Nao foi possivel ler %s", CA_FILE);
+		NSLOG(netsurf, ERROR, "Could not read %s", CA_FILE);
 	return g_tls_state == 1;
 }
 
@@ -492,6 +494,13 @@ static void publish_chain(struct xf *f, struct vchain *vc, uint32_t result_flags
 		cert_chain_dup(chain, keep);
 	set_chain(f, chain);
 }
+
+static const uint16_t g_tls_groups[] = {
+	MBEDTLS_SSL_IANA_TLS_GROUP_SECP256R1,
+	MBEDTLS_SSL_IANA_TLS_GROUP_X25519,
+	MBEDTLS_SSL_IANA_TLS_GROUP_SECP384R1,
+	MBEDTLS_SSL_IANA_TLS_GROUP_NONE
+};
 
 static void tls_cache_get(struct xf *f, mbedtls_ssl_context *ssl)
 {
@@ -695,8 +704,13 @@ static int conn_read(struct conn *c, unsigned char *b, size_t n)
 	}
 	for (;;) {
 		int r = mbedtls_ssl_read(&c->ssl, b, n);
-		if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE ||
-		    r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
+		if (r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
+			/* TLS 1.3 sends the ticket after the handshake: keep it so
+			 * the next connection to this host resumes (no RSA/ECDHE) */
+			if (c->uses >= 0) tls_cache_put(c->io.f, &c->ssl);
+			continue;
+		}
+		if (r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE)
 			continue;
 		if (r == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY || r == 0) return 0;
 		if (r == MBEDTLS_ERR_SSL_TIMEOUT) {
@@ -765,6 +779,13 @@ static struct conn *conn_open(struct xf *f)
 		mbedtls_ssl_conf_ca_chain(&c->conf, &g_ca, NULL);
 		mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &g_drbg);
 		mbedtls_ssl_conf_verify(&c->conf, verify_cb, &vc);
+		/* P-256 first: with mbedTLS's NIST fast reduction and fixed-point
+		 * comb it is the cheapest key exchange on a 32-bit Pentium III */
+		mbedtls_ssl_conf_groups(&c->conf, g_tls_groups);
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_SSL_SESSION_TICKETS)
+		mbedtls_ssl_conf_tls13_enable_signal_new_session_tickets(&c->conf,
+			MBEDTLS_SSL_TLS1_3_SIGNAL_NEW_SESSION_TICKETS_ENABLED);
+#endif
 		if (f->downgrade_tls)
 			mbedtls_ssl_conf_max_tls_version(&c->conf, MBEDTLS_SSL_VERSION_TLS1_2);
 		if (mbedtls_ssl_setup(&c->ssl, &c->conf) != 0 ||
@@ -1210,6 +1231,19 @@ static void *xf_setup(struct fetch *parent, nsurl *url, bool only_2xx, bool down
 
 	if (nsurl_get(url, NSURL_PATH | NSURL_QUERY, &path, &plen) != NSERROR_OK) goto fail;
 
+	/* requests answered locally with a redirect (Google Search needs JS) */
+	if (parent != NULL && post_urlenc == NULL && post_multipart == NULL &&
+	    nsoption_bool(xbox_google_redirect)) {
+		lwc_string *lp = nsurl_get_component(url, NSURL_PATH);
+		lwc_string *lq = nsurl_get_component(url, NSURL_QUERY);
+		char pbuf[64], qbuf[2100];
+		snprintf(pbuf, sizeof pbuf, "%.*s", lp ? (int)lwc_string_length(lp) : 0, lp ? lwc_string_data(lp) : "");
+		snprintf(qbuf, sizeof qbuf, "%.*s", lq ? (int)lwc_string_length(lq) : 0, lq ? lwc_string_data(lq) : "");
+		if (lp) lwc_string_unref(lp);
+		if (lq) lwc_string_unref(lq);
+		f->rewrite = nsx_rewrite_url(f->host, pbuf, qbuf);
+	}
+
 	/* corpo do POST */
 	if (post_urlenc != NULL) {
 		f->is_post = true;
@@ -1314,6 +1348,22 @@ static bool xf_start(void *vf)
 		}
 	}
 	f->cert_override = urldb_get_cert_permissions(f->url);
+	if (f->rewrite != NULL) {
+		/* no network: hand NetSurf a redirect, delivered by the next poll */
+		char *h = NULL; size_t hl = 0, hc = 0;
+		NSLOG(netsurf, INFO, "[NET] %s rewritten to %s", nsurl_access(f->url), f->rewrite);
+		req_add(&h, &hl, &hc, "HTTP/1.1 302 Found\r\nLocation: %s\r\nContent-Length: 0\r\n", f->rewrite);
+		free(b);
+		f->t0 = GetTickCount();
+		EnterCriticalSection(&g_lock);
+		f->hdr = h; f->hdr_len = hl; f->hdr_cap = hc;
+		f->hdr_complete = true;
+		f->result = h ? XR_OK : XR_ERROR;
+		if (h == NULL) snprintf(f->err, sizeof f->err, "Out of memory");
+		LeaveCriticalSection(&g_lock);
+		f->started = true;
+		return true;
+	}
 	req_add(&b, &bl, &bc, "\r\n");
 	if (f->post != NULL && f->post_len)
 		buf_append(&b, &bl, &bc, f->post, f->post_len);
@@ -1350,6 +1400,7 @@ static void xf_free(void *vf)
 	struct xf *f = vf;
 	nsurl_unref(f->url);
 	free(f->location);
+	free(f->rewrite);
 	free(f->realm);
 	EnterCriticalSection(&g_lock);
 	f->cancel = true;
@@ -1538,9 +1589,9 @@ static void xf_poll_one(struct xf *f)
 		{
 			/* diagnostico: tempos de cada pedido (ver NETSURF.LOG) */
 			uint32_t te = f->t_end ? f->t_end : GetTickCount();
-			NSLOG(netsurf, INFO, "[REDE] %s cod=%ld res=%d %ub %ums (ligacao %s +%ums, tls %ums, 1o byte +%ums) %s",
+			NSLOG(netsurf, INFO, "[NET] %s code=%ld res=%d %ub %ums (conn %s +%ums, tls %ums, first byte +%ums) %s",
 			      nsurl_access(f->url), f->http_code, result, (unsigned)f->bytes_in,
-			      (unsigned)(te - f->t0), f->reused ? "reutilizada" : "nova",
+			      (unsigned)(te - f->t0), f->reused ? "reused" : "new",
 			      f->t_conn ? (unsigned)(f->t_conn - f->t0) : 0, (unsigned)f->t_tls,
 			      f->t_first ? (unsigned)(f->t_first - f->t0) : 0, err);
 			nsx_perf_fetch_done(te - f->t0, f->bytes_in, result == XR_OK);
@@ -1629,7 +1680,7 @@ nserror fetch_xbox_register(void)
 		mbedtls_ctr_drbg_init(&g_drbg);
 		if (mbedtls_ctr_drbg_seed(&g_drbg, mbedtls_entropy_func, &g_entropy,
 					  (const unsigned char *)"NetSurfX", 8) != 0)
-			NSLOG(netsurf, ERROR, "Falha a iniciar o gerador aleatorio do TLS");
+			NSLOG(netsurf, ERROR, "Failed to seed the TLS random generator");
 		g_user_agent = strdup(user_agent_string());
 		g_inited = true;
 	}
@@ -1688,7 +1739,7 @@ bool nsx_dl_begin(nsurl *url, const char *path, const char *name)
 	g_dl.fp = fopen(path, "wb");
 	if (g_dl.fp == NULL) {
 		g_dl.state = NSX_DL_FAILED;
-		snprintf(g_dl.err, sizeof g_dl.err, "N\xc3\xa3o foi poss\xc3\xadvel criar o ficheiro");
+		snprintf(g_dl.err, sizeof g_dl.err, "Could not create the file");
 		return false;
 	}
 	g_dl.total = -1;
@@ -1701,7 +1752,7 @@ bool nsx_dl_begin(nsurl *url, const char *path, const char *name)
 		nsurl_unref(g_dl.url);
 		g_dl.url = NULL;
 		g_dl.state = NSX_DL_FAILED;
-		snprintf(g_dl.err, sizeof g_dl.err, "N\xc3\xa3o foi poss\xc3\xadvel iniciar o download");
+		snprintf(g_dl.err, sizeof g_dl.err, "Could not start the download");
 		return false;
 	}
 	return true;
@@ -1772,7 +1823,7 @@ enum nsx_dl_state nsx_dl_poll(struct nsx_dl_info *info)
 			LeaveCriticalSection(&g_lock);
 
 			if (g_dl.cancel) {
-				dl_finish(NSX_DL_CANCELLED, "Cancelado");
+				dl_finish(NSX_DL_CANCELLED, "Cancelled");
 			} else if (loc != NULL && g_dl.redirects < 5) {
 				nsurl *next = NULL;
 				g_dl.redirects++;
@@ -1783,18 +1834,18 @@ enum nsx_dl_state nsx_dl_poll(struct nsx_dl_info *info)
 					fclose(g_dl.fp);
 					g_dl.fp = fopen(g_dl.path, "wb");
 					if (g_dl.fp == NULL || !dl_spawn(next))
-						dl_finish(NSX_DL_FAILED, "Falhou ao seguir o redireccionamento");
+						dl_finish(NSX_DL_FAILED, "Could not follow the redirect");
 				} else {
-					dl_finish(NSX_DL_FAILED, "Redireccionamento inv\xc3\xa1lido");
+					dl_finish(NSX_DL_FAILED, "Invalid redirect");
 				}
 			} else if (r != XR_OK) {
-				dl_finish(NSX_DL_FAILED, err[0] ? err : "Erro de rede");
+				dl_finish(NSX_DL_FAILED, err[0] ? err : "Network error");
 			} else if (status < 200 || status >= 300) {
 				char m[64];
-				snprintf(m, sizeof m, "O servidor respondeu com o erro %d", status);
+				snprintf(m, sizeof m, "The server replied with error %d", status);
 				dl_finish(NSX_DL_FAILED, m);
 			} else if (g_dl.total >= 0 && g_dl.got < g_dl.total) {
-				dl_finish(NSX_DL_FAILED, "Download incompleto (liga\xc3\xa7\xc3\xa3o cortada)");
+				dl_finish(NSX_DL_FAILED, "Incomplete download (connection dropped)");
 			} else {
 				dl_finish(NSX_DL_DONE, NULL);
 			}
@@ -1828,7 +1879,7 @@ void nsx_dl_ack(void)
 static const char *const ua_modes[] = {
 	NULL,
 	"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
-	"Opera/9.80 (J2ME/MIDP; Opera Mini/9.80 (S60; SymbOS; Opera Mobi/23.348; U; pt) Presto/2.5.25 Version/10.54",
+	"Opera/9.80 (J2ME/MIDP; Opera Mini/9.80 (S60; SymbOS; Opera Mobi/23.348; U; en) Presto/2.5.25 Version/10.54",
 	"Links (2.29; Linux i686; GNU C; text)",
 };
 

@@ -100,7 +100,28 @@ if os.path.exists(p9):
 #     estragados) o browser continua sem ela em vez de nao arrancar
 edit('netsurf/content/llcache.c',
      '\treturn guit->llcache->initialise(&prm->store);\n}',
-     '\tif (guit->llcache->initialise(&prm->store) != NSERROR_OK) { /* NSX storeinit */\n\t\tNSLOG(llcache, ERROR, "Cache em disco indisponivel; a continuar sem ela");\n\t}\n\treturn NSERROR_OK;\n}',
+     '\tif (guit->llcache->initialise(&prm->store) != NSERROR_OK) { /* NSX storeinit */\n\t\tNSLOG(llcache, ERROR, "Disk cache unavailable; continuing without it");\n\t}\n\treturn NSERROR_OK;\n}',
      'NSX storeinit')
+
+# 11. llcache.c: an empty resource (e.g. an empty user.css) arrives as a NULL
+#     buffer of length 0; memcpy(dst, NULL, 0) is undefined behaviour
+edit('netsurf/content/llcache.c',
+     '\t/* Append this data chunk to source buffer */\n\tmemcpy(object->source_data + object->source_len, data, len);\n',
+     '\t/* Append this data chunk to source buffer */\n\tif (len > 0) /* NSX emptychunk */\n\t\tmemcpy(object->source_data + object->source_len, data, len);\n',
+     'NSX emptychunk')
+
+# 12. content.c: a content destroyed without being closed first (window
+#     closed mid-search, exit) leaked its find-in-page context
+edit('netsurf/content/content.c',
+     '\tassert(c->locked == false);\n\n\tif (c->handler->destroy != NULL)\n\t\tc->handler->destroy(c);\n',
+     '\tassert(c->locked == false);\n\n\tif (c->textsearch.context != NULL) { /* NSX searchleak */\n\t\tcontent_textsearch_destroy(c->textsearch.context);\n\t\tc->textsearch.context = NULL;\n\t}\n\tfree(c->textsearch.string);\n\tc->textsearch.string = NULL;\n\n\tif (c->handler->destroy != NULL)\n\t\tc->handler->destroy(c);\n',
+     'NSX searchleak')
+
+# 13. textsearch.c: the head of the match list was never freed (48 bytes
+#     leaked by every find-in-page)
+edit('netsurf/content/textsearch.c',
+     '\tfree_matches(textsearch);\n\tfree(textsearch);\n',
+     '\tfree_matches(textsearch);\n\tfree(textsearch->found); /* NSX searchhead */\n\tfree(textsearch);\n',
+     'NSX searchhead')
 
 print('alterados:', ', '.join(sorted(set(done))) or 'nada (ja aplicado)')

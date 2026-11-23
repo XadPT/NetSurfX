@@ -50,7 +50,7 @@ NSOPTION_INTEGER(xbox_overscan_y, 12)
 /** tentar 720p (precisa de cabo componente e 720p ligado no dashboard) */
 NSOPTION_BOOL(xbox_hd, false)
 /** teclado USB com disposicao americana (por omissao: portuguesa) */
-NSOPTION_BOOL(xbox_kbd_us, false)
+NSOPTION_BOOL(xbox_kbd_us, true)
 /** D-pad salta entre links e campos (false: desloca a pagina como setas) */
 NSOPTION_BOOL(xbox_dpad_links, true)
 /** estatisticas (memoria, tempos) na barra de estado - versao de testes: ligado */
@@ -59,6 +59,8 @@ NSOPTION_BOOL(xbox_show_stats, true)
 NSOPTION_INTEGER(xbox_ua_mode, 0)
 /** pasta dos downloads */
 NSOPTION_STRING(xbox_download_dir, "E:\\Downloads")
+/* Google searches go to DuckDuckGo HTML (Google Search needs JavaScript) */
+NSOPTION_BOOL(xbox_google_redirect, true)
 
 /***** font options *****/
 

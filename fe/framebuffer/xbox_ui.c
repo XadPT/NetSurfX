@@ -204,7 +204,7 @@ static enum ui_btn ui_wait_button(void)
 	SDL_Event ev;
 	for (;;) {
 		nsx_check_igr();
-		nsx_heartbeat("menu / teclado no ecra (a espera de um botao)");
+		nsx_heartbeat("menu / on-screen keyboard (waiting for a button)");
 		nsx_usbhid_poll();
 		if (nsx_kbd_pending()) {
 			if (g_ui_raw_kbd) return UB_KBD;
@@ -341,14 +341,14 @@ static const char *const osk_layers[3][OSK_ROWS][OSK_COLS] = {
 	  { "Z","X","C","V","B","N","M",",",";","!","&","=" } },
 	{ { "!","\"","#","$","%","&","'","(",")","*","+","~" },
 	  { "[","]","{","}","<",">","^","`","|","\\","\xe2\x86\xb5","\xe2\x82\xac" },
-	  { "\xc3\xa1","\xc3\xa0","\xc3\xa2","\xc3\xa3","\xc3\xa9","\xc3\xaa","\xc3\xad","\xc3\xb3","\xc3\xb4","\xc3\xb5","\xc3\xba","\xc3\xa7" },
-	  { "\xc3\x81","\xc3\x80","\xc3\x82","\xc3\x83","\xc3\x89","\xc3\x8a","\xc3\x8d","\xc3\x93","\xc3\x94","\xc3\x95","\xc3\x9a","\xc3\x87" } },
+	  { "\xc3\xa9","\xc3\xa8","\xc3\xaa","\xc3\xab","\xc3\xa1","\xc3\xa0","\xc3\xa2","\xc3\xa4","\xc3\xad","\xc3\xb3","\xc3\xb6","\xc3\xbc" },
+	  { "\xc3\xb1","\xc3\xa7","\xc3\xba","\xc3\xb4","\xc3\xa3","\xc3\xb5","\xc3\x9f","\xc2\xa3","\xc3\x89","\xc3\x91","\xc3\x87","\xc3\x9c" } },
 };
 
 /* linha especial (5.a): cada tecla ocupa N colunas */
 enum { SK_SHIFT, SK_SYM, SK_SPACE, SK_DEL, SK_WWW, SK_COM, SK_OK, SK_COUNT };
 static const int sk_cols[SK_COUNT] = { 2, 2, 3, 1, 1, 1, 2 };
-static const char *const sk_label[SK_COUNT] = { "Shift", "#@\xc3\xa1", "Espa\xc3\xa7o", "\xe2\x86\x90", "www.", ".com", "OK" };
+static const char *const sk_label[SK_COUNT] = { "Shift", "#@\xc3\xa9", "Space", "\xe2\x86\x90", "www.", ".com", "OK" };
 
 static int sk_at_col(int col)
 {
@@ -432,12 +432,12 @@ static void osk_draw(const char *title, const struct ebuf *e, int layer, int row
 			ui_fill(x + 2, y, x1 - 2, y + kh, sel ? C_KEYSEL : (on ? 0xff806040 : C_KEYSPEC));
 			fs.background = sel ? 0x10a010 : (on ? 0x406080 : 0x30405a);
 			const char *lab = sk_label[k];
-			if (k == SK_OK) lab = multiline ? "OK" : "Ir";
+			if (k == SK_OK) lab = multiline ? "OK" : "Go";
 			ui_text_centered(x, x1, y + 22, &fs, lab);
 		}
 	}
-	snprintf(hint, sizeof hint, "A tecla  B apagar  X espa\xc3\xa7o  Y mai\xc3\xbasc.  Branco s\xc3\xadmb.  "
-		 "Preto limpar  L/R cursor  Start %s  Back sair", multiline ? "enviar" : "ir");
+	snprintf(hint, sizeof hint, "A key  B delete  X space  Y shift  White symbols  "
+		 "Black clear  L/R cursor  Start %s  Back cancel", multiline ? "submit" : "go");
 	/* encolhe a letra ate a linha de ajuda caber */
 	for (int pt = 9; pt >= 6; pt--) {
 		ui_style(&fsh, pt, false, T_GREY, 0x2a2a2a);
@@ -558,22 +558,22 @@ bool nsx_osk_run(const char *title, const char *initial, char *out, size_t outsz
 void nsx_help_show(void)
 {
 	static const char *const lines[] = {
-		"Controlos do NetSurfX",
+		"NetSurfX controls",
 		"",
-		"Anal\xc3\xb3gico esquerdo   mover o ponteiro",
-		"A                     clicar / abrir liga\xc3\xa7\xc3\xa3o / escrever num campo",
-		"Anal\xc3\xb3gico direito    deslocar a p\xc3\xa1gina",
-		"Gatilhos L / R        p\xc3\xa1gina acima / abaixo",
-		"D-pad                 saltar entre links e campos",
-		"B                     voltar atr\xc3\xa1s",
-		"Branco                avan\xc3\xa7" "ar",
-		"X                     recarregar",
-		"Y                     escrever endere\xc3\xa7o",
-		"Preto                 guardar nos favoritos",
-		"Start                 menu: favoritos, hist\xc3\xb3rico, procurar, defini\xc3\xa7\xc3\xb5" "es",
-		"Cliques nos anal\xc3\xb3gicos  menos zoom / mais zoom",
-		"Back                  esta ajuda",
-		"L + R + Back + Preto  voltar ao dashboard",
+		"Left stick            move the pointer",
+		"A                     click / follow link / edit a field",
+		"Right stick           scroll the page",
+		"L / R triggers        page up / page down",
+		"D-pad                 jump between links and fields",
+		"B                     back",
+		"White                 forward",
+		"X                     reload",
+		"Y                     type an address or search",
+		"Black                 bookmark this page",
+		"Start                 menu: bookmarks, history, find, settings",
+		"Stick clicks          zoom out / zoom in",
+		"Back                  this help",
+		"L + R + Back + Black  return to the dashboard",
 	};
 	int W = nsfb_get_width_safe(), H = nsfb_get_height_safe();
 	plot_font_style_t fs, ft;
@@ -604,7 +604,7 @@ void nsx_help_show(void)
 	fs.foreground = 0x80ff80;
 	ui_text(40, H - 52, &fs, net, strlen(net));
 	fs.foreground = T_GREY;
-	{ const char *c = "Carrega em qualquer bot\xc3\xa3o para fechar"; ui_text(40, H - 36, &fs, c, strlen(c)); }
+	{ const char *c = "Press any button to close"; ui_text(40, H - 36, &fs, c, strlen(c)); }
 	ui_present();
 	ui_wait_button();
 	ui_drain();
@@ -638,9 +638,9 @@ static void bm_write_html(void)
 	char line[1200];
 	int n = 0;
 	if (out == NULL) { if (in) fclose(in); return; }
-	fputs("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>Favoritos</title>"
+	fputs("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>Bookmarks</title>"
 	      "<link rel=\"stylesheet\" href=\"file:///D:/res/home.css\"></head><body>\n"
-	      "<h1>Favoritos</h1>\n<p><a href=\"file:///D:/res/home.html\">&larr; P\xc3\xa1gina inicial</a></p>\n<ul class=\"bm\">\n", out);
+	      "<h1>Bookmarks</h1>\n<p><a href=\"file:///D:/res/home.html\">&larr; Home page</a></p>\n<ul class=\"bm\">\n", out);
 	if (in) {
 		while (fgets(line, sizeof line, in)) {
 			char *tab = strchr(line, '\t');
@@ -658,8 +658,8 @@ static void bm_write_html(void)
 		fclose(in);
 	}
 	if (n == 0)
-		fputs("<li>Ainda n\xc3\xa3o h\xc3\xa1 favoritos. Numa p\xc3\xa1gina, carrega no bot\xc3\xa3o Preto para a guardar.</li>\n", out);
-	fputs("</ul>\n<p class=\"small\">Para apagar favoritos, edita data\\bookmarks.txt por FTP.</p>\n</body></html>\n", out);
+		fputs("<li>No bookmarks yet. On any page, press the Black button to add it.</li>\n", out);
+	fputs("</ul>\n<p class=\"small\">To remove bookmarks, edit data\\bookmarks.txt over FTP.</p>\n</body></html>\n", out);
 	fclose(out);
 }
 
@@ -840,9 +840,9 @@ const char *nsx_history_page(void)
 	qsort(g_hist, g_hist_n, sizeof *g_hist, hist_cmp);
 	out = fopen(HIST_HTML, "w");
 	if (out != NULL) {
-		fputs("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>Hist\xc3\xb3rico</title>"
+		fputs("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>History</title>"
 		      "<link rel=\"stylesheet\" href=\"file:///D:/res/home.css\"></head><body>\n"
-		      "<h1>Hist\xc3\xb3rico</h1>\n<p><a href=\"file:///D:/res/home.html\">&larr; P\xc3\xa1gina inicial</a></p>\n<ul class=\"bm\">\n", out);
+		      "<h1>History</h1>\n<p><a href=\"file:///D:/res/home.html\">&larr; Home page</a></p>\n<ul class=\"bm\">\n", out);
 		n = g_hist_n < HIST_MAX ? g_hist_n : HIST_MAX;
 		for (int i = 0; i < n; i++) {
 			char when[32] = "";
@@ -856,7 +856,7 @@ const char *nsx_history_page(void)
 			fprintf(out, "</a> <span class=\"small\">%s</span></li>\n", when);
 		}
 		if (n == 0)
-			fputs("<li>Ainda n\xc3\xa3o h\xc3\xa1 p\xc3\xa1ginas no hist\xc3\xb3rico.</li>\n", out);
+			fputs("<li>No pages in the history yet.</li>\n", out);
 		fputs("</ul>\n</body></html>\n", out);
 		fclose(out);
 	}
