@@ -1,0 +1,30 @@
+From 628abea30cc156620f7b05c159f419a246a42458 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Wed, 12 Aug 2026 12:32:55 +0200
+Subject: [PATCH] select: ::first-letter uses hyphen not an underscore
+
+The typo "first_letter" never compares equal to the "first-letter" from
+the stylesheet and was silently dropped.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/strings.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/select/strings.c b/src/select/strings.c
+index 6fea61d..cfa12b0 100644
+--- a/src/select/strings.c
++++ b/src/select/strings.c
+@@ -160,7 +160,7 @@ css_error css_select_strings_intern(css_select_strings *str)
+ 		return css_error_from_lwc_error(error);
+ 
+ 	error = lwc_intern_string(
+-			"first_letter", SLEN("first-letter"),
++			"first-letter", SLEN("first-letter"),
+ 			&str->first_letter);
+ 	if (error != lwc_error_ok)
+ 		return css_error_from_lwc_error(error);
+-- 
+2.43.0
+

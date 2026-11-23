@@ -1,0 +1,49 @@
+NetSurfX: initialise the locals introduced by 1e18694/58bff86 (GCC -Werror=maybe-uninitialized false positives).
+
+diff --git a/src/select/computed.c b/src/select/computed.c
+--- a/src/select/computed.c
++++ b/src/select/computed.c
+@@ -597,8 +597,8 @@
+ 		/* Relative -> follow $9.4.3 */
+ 
+ 		if (top == CSS_TOP_AUTO) {
+-			css_fixed bottom_length;
+-			css_unit bottom_unit;
++			css_fixed bottom_length = 0;
++			css_unit bottom_unit = CSS_UNIT_PX;
+ 
+ 			uint8_t bottom = get_bottom(style,
+ 					&bottom_length,
+@@ -634,8 +634,8 @@
+ 
+ 	} else if (position == CSS_POSITION_RELATIVE) {
+ 		/* Relative -> follow $9.4.3 */
+-		css_fixed left_length;
+-		css_unit left_unit;
++		css_fixed left_length = 0;
++		css_unit left_unit = CSS_UNIT_PX;
+ 
+ 		uint8_t left = get_left(style,
+ 				&left_length,
+@@ -683,8 +683,8 @@
+ 
+ 	} else if (position == CSS_POSITION_RELATIVE) {
+ 		/* Relative -> follow $9.4.3 */
+-		css_fixed top_length;
+-		css_unit top_unit;
++		css_fixed top_length = 0;
++		css_unit top_unit = CSS_UNIT_PX;
+ 
+ 		/* Have to get top; if set at all, it overrides bottom */
+ 		uint8_t top = get_top(style,
+@@ -721,8 +721,8 @@
+ 
+ 	} else if (position == CSS_POSITION_RELATIVE) {
+ 		/* Relative -> follow $9.4.3 */
+-		css_fixed right_length;
+-		css_unit right_unit;
++		css_fixed right_length = 0;
++		css_unit right_unit = CSS_UNIT_PX;
+ 
+ 		uint8_t right = get_right(style,
+ 				&right_length,

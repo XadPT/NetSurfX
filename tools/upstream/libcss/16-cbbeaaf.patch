@@ -1,0 +1,38 @@
+From cbbeaaf9ad12b20f2710a775d55f422e01fc2866 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Fri, 9 Oct 2026 19:12:13 +0200
+Subject: [PATCH] select: unit: vh and vw were swapped in px_per_unit
+
+css_unit__px_per_unit() answered the viewport WIDTH for 1vh and the
+HEIGHT for 1vw. Its callers -- css_unit_len2css_px() and so the calc()
+evaluator -- then resolved `calc(100vh - 50px)` against the width: 750px
+in an 800x600 viewport where it is 550. Lengths outside calc() go
+through css_unit__absolute_len2pt(), which has them the right way round,
+so only calc() showed it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/unit.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/select/unit.c b/src/select/unit.c
+index 75c33db..3cd3eed 100644
+--- a/src/select/unit.c
++++ b/src/select/unit.c
+@@ -267,10 +267,10 @@ static inline css_fixed css_unit__px_per_unit(
+ 				viewport_width);
+ 
+ 	case CSS_UNIT_VH:
+-		return FDIV(viewport_width, F_100);
++		return FDIV(viewport_height, F_100);
+ 
+ 	case CSS_UNIT_VW:
+-		return FDIV(viewport_height, F_100);
++		return FDIV(viewport_width, F_100);
+ 
+ 	default:
+ 		return 0;
+-- 
+2.43.0
+

@@ -301,3 +301,60 @@ int F(printf)(const char *fmt, ...)
 	va_end(ap);
 	return r;
 }
+
+/* ================================================================ qsort */
+
+/*
+ * pdclib's qsort scans for the partition point without bounds checks and
+ * relies on the comparison being a consistent ordering. A comparison that
+ * is not (cmp(x, x) != 0, as NetSurf's grid layout had) makes it walk off
+ * the array and crash. This version can never leave the array whatever the
+ * comparison returns: insertion sort for short runs, heapsort otherwise
+ * (O(n log n) worst case, no recursion, no extra memory).
+ */
+static void qs_swap(unsigned char *a, unsigned char *b, size_t size)
+{
+	while (size >= 4) {
+		uint32_t t;
+		memcpy(&t, a, 4); memcpy(a, b, 4); memcpy(b, &t, 4);
+		a += 4; b += 4; size -= 4;
+	}
+	while (size--) {
+		unsigned char t = *a; *a++ = *b; *b++ = t;
+	}
+}
+
+static void qs_sift(unsigned char *base, size_t root, size_t n, size_t size,
+		    int (*cmp)(const void *, const void *))
+{
+	for (;;) {
+		size_t child = 2 * root + 1, big = root;
+		if (child < n && cmp(base + child * size, base + big * size) > 0)
+			big = child;
+		if (child + 1 < n && cmp(base + (child + 1) * size, base + big * size) > 0)
+			big = child + 1;
+		if (big == root)
+			return;
+		qs_swap(base + root * size, base + big * size, size);
+		root = big;
+	}
+}
+
+void F(qsort)(void *vbase, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+	unsigned char *base = vbase;
+	if (base == NULL || n < 2 || size == 0 || cmp == NULL)
+		return;
+	if (n <= 12) {
+		for (size_t i = 1; i < n; i++)
+			for (size_t j = i; j > 0 && cmp(base + (j - 1) * size, base + j * size) > 0; j--)
+				qs_swap(base + (j - 1) * size, base + j * size, size);
+		return;
+	}
+	for (size_t i = n / 2; i-- > 0; )
+		qs_sift(base, i, n, size, cmp);
+	for (size_t end = n - 1; end > 0; end--) {
+		qs_swap(base, base + end * size, size);
+		qs_sift(base, 0, end, size, cmp);
+	}
+}

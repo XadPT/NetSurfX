@@ -83,7 +83,7 @@ bool nsx_mouse_take(int *dx, int *dy, int *wheel, int *buttons)
 
 /* ---------------------------------------------------------------- disposicoes */
 
-static int g_layout = NSX_KBD_PT;
+static int g_layout = NSX_KBD_US;
 void nsx_kbd_set_layout(int layout) { g_layout = layout; }
 
 /* teclas mortas (acentos), guardadas como o caracter do acento */

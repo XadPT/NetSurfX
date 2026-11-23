@@ -1,0 +1,26 @@
+From 3e5409942cc8a7ea7ef705b035394c6089cef4f8 Mon Sep 17 00:00:00 2001
+From: John-Mark Bell <jmb@netsurf-browser.org>
+Date: Fri, 25 Sep 2026 15:12:17 +0100
+Subject: [PATCH] Account for non-multiple-of-8 input widths
+
+Issue-Reported-By: Viacheslav (Slava) Radiukov
+---
+ src/libnsbmp.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/libnsbmp.c b/src/libnsbmp.c
+index e99bff9..49c407e 100644
+--- a/src/libnsbmp.c
++++ b/src/libnsbmp.c
+@@ -852,7 +852,7 @@ static bmp_result bmp_decode_mask(bmp_image *bmp, uint8_t *data, int bytes)
+         addr = ((intptr_t)data) & 3;
+ 
+         for (y = 0; y < bmp->height; y++) {
+-                if ((data + (bmp->width >> 3)) > end)
++                if ((data + ((bmp->width + 7) / 8)) > end)
+                         return BMP_INSUFFICIENT_DATA;
+                 scanline = (void *)(bottom - (y * swidth));
+                 for (x = 0; x < bmp->width; x++) {
+-- 
+2.43.0
+

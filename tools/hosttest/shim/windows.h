@@ -21,4 +21,16 @@ void Sleep(DWORD ms);
 DWORD GetTickCount(void);
 DWORD GetFileAttributesA(const char *p);
 BOOL CreateDirectoryA(const char *p, void *sa);
+/* files (diagnostics) */
+#define GENERIC_WRITE 0x40000000
+#define FILE_SHARE_READ 1
+#define OPEN_ALWAYS 4
+#define FILE_ATTRIBUTE_NORMAL 0x80
+#define FILE_END 2
+#define INVALID_HANDLE_VALUE ((HANDLE)(intptr_t)-1)
+HANDLE CreateFileA(const char *p, DWORD acc, DWORD share, void *sa, DWORD disp, DWORD attr, HANDLE tmpl);
+BOOL WriteFile(HANDLE h, const void *b, DWORD n, DWORD *wr, void *ov);
+DWORD SetFilePointer(HANDLE h, LONG d, LONG *hi, DWORD how);
+static inline LONG InterlockedExchange(volatile LONG *t, LONG v) { return __atomic_exchange_n(t, v, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedIncrement(volatile LONG *t) { return __atomic_add_fetch(t, 1, __ATOMIC_SEQ_CST); }
 #endif

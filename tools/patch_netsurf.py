@@ -100,7 +100,85 @@ if os.path.exists(p9):
 #     estragados) o browser continua sem ela em vez de nao arrancar
 edit('netsurf/content/llcache.c',
      '\treturn guit->llcache->initialise(&prm->store);\n}',
-     '\tif (guit->llcache->initialise(&prm->store) != NSERROR_OK) { /* NSX storeinit */\n\t\tNSLOG(llcache, ERROR, "Cache em disco indisponivel; a continuar sem ela");\n\t}\n\treturn NSERROR_OK;\n}',
+     '\tif (guit->llcache->initialise(&prm->store) != NSERROR_OK) { /* NSX storeinit */\n\t\tNSLOG(llcache, ERROR, "Disk cache unavailable; continuing without it");\n\t}\n\treturn NSERROR_OK;\n}',
      'NSX storeinit')
+
+# 11. llcache.c: an empty resource (e.g. an empty user.css) arrives as a NULL
+#     buffer of length 0; memcpy(dst, NULL, 0) is undefined behaviour
+edit('netsurf/content/llcache.c',
+     '\t/* Append this data chunk to source buffer */\n\tmemcpy(object->source_data + object->source_len, data, len);\n',
+     '\t/* Append this data chunk to source buffer */\n\tif (len > 0) /* NSX emptychunk */\n\t\tmemcpy(object->source_data + object->source_len, data, len);\n',
+     'NSX emptychunk')
+
+# 12. content.c: a content destroyed without being closed first (window
+#     closed mid-search, exit) leaked its find-in-page context
+edit('netsurf/content/content.c',
+     '\tassert(c->locked == false);\n\n\tif (c->handler->destroy != NULL)\n\t\tc->handler->destroy(c);\n',
+     '\tassert(c->locked == false);\n\n\tif (c->textsearch.context != NULL) { /* NSX searchleak */\n\t\tcontent_textsearch_destroy(c->textsearch.context);\n\t\tc->textsearch.context = NULL;\n\t}\n\tfree(c->textsearch.string);\n\tc->textsearch.string = NULL;\n\n\tif (c->handler->destroy != NULL)\n\t\tc->handler->destroy(c);\n',
+     'NSX searchleak')
+
+# 13. textsearch.c: the head of the match list was never freed (48 bytes
+#     leaked by every find-in-page)
+edit('netsurf/content/textsearch.c',
+     '\tfree_matches(textsearch);\n\tfree(textsearch);\n',
+     '\tfree_matches(textsearch);\n\tfree(textsearch->found); /* NSX searchhead */\n\tfree(textsearch);\n',
+     'NSX searchhead')
+
+# 15. layout_grid.c (netsurf-switch fork): the grid item sort compared item
+#     ADDRESSES for document order and never returned 0, even for an item
+#     against itself. That is not a valid ordering; pdclib's quicksort then
+#     ran off the array and crashed (seen on html.duckduckgo.com, v0.8.1).
+#     Keep the document index in the item and compare that.
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\tbool placed_r, placed_c;\n\tint order;\n};\n',
+     '\tbool placed_r, placed_c;\n\tint order;\n\tint idx; /* NSX gridsort: document order */\n};\n',
+     'NSX gridsort: document order')
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\tif (x->order != y->order)\n\t\treturn x->order - y->order;\n\t/* stable: keep document order */\n\treturn (x < y) ? -1 : 1;\n',
+     '\tif (x->order != y->order) /* NSX gridsort cmp */\n\t\treturn x->order < y->order ? -1 : 1;\n\t/* stable: keep document order */\n\treturn (x->idx > y->idx) - (x->idx < y->idx);\n',
+     'NSX gridsort cmp')
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\t\tit->box = b;\n\t\tif (b->style != NULL)\n\t\t\tcss_computed_order(b->style, &order);\n',
+     '\t\tit->box = b;\n\t\tit->idx = i - 1; /* NSX gridsort idx */\n\t\tif (b->style != NULL)\n\t\t\tcss_computed_order(b->style, &order);\n',
+     'NSX gridsort idx')
+
+# 16. utils/log.c: when the -V log file could not be opened, logfile is
+#     NULL and nslog_finalise() called fclose(NULL) (crash on exit to the
+#     dashboard, v0.8.2). Also never write through a NULL stream.
+edit('netsurf/utils/log.c',
+     '\tverbose_log = true;\n\tif (logfile != stderr) {\n\t\tfclose(logfile);\n',
+     '\tverbose_log = (logfile != NULL); /* NSX logfinal */\n\tif (logfile != NULL && logfile != stderr) {\n\t\tfclose(logfile);\n',
+     'NSX logfinal')
+
+# 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
+#     mirrored on github.com/netsurf-browser) that are newer than the
+#     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied
+#     in file-name order; each is skipped when already present. Highlights:
+#     libcss 113dc45 calc() division by zero (SIGFPE crash), 499f1c4/006ffc4
+#     reads past the token vector, cbbeaaf vh/vw swapped, rounding fixes;
+#     libnsgif 2255b2f LZW off-by-one, 69c1120 missing previous frame;
+#     libnsbmp RLE padding and odd widths; libsvgtiny leaks and error paths;
+#     netsurf 597329f https :443 default port, 703224c bounded realpath.
+import subprocess, glob
+UP = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upstream')
+def _order(pf):
+    b = os.path.basename(pf)
+    n = b.split('-', 1)[0]
+    return (int(n) if n.isdigit() else 0, b)
+for tree in sorted(os.listdir(UP)):
+    tdir = os.path.join(ROOT, tree)
+    stamp = os.path.join(tdir, '.nsx-upstream-applied')
+    applied = set(open(stamp).read().split()) if os.path.exists(stamp) else set()
+    for pf in sorted(glob.glob(os.path.join(UP, tree, '*.patch')), key=_order):
+        name = os.path.basename(pf)
+        if name in applied:
+            continue
+        r = subprocess.run(['git', 'apply', pf], cwd=tdir, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit('upstream patch %s/%s failed: %s' % (tree, name, r.stderr))
+        applied.add(name)
+        with open(stamp, 'a') as fh:
+            fh.write(name + '\n')
+        done.append('upstream %s/%s' % (tree, name))
 
 print('alterados:', ', '.join(sorted(set(done))) or 'nada (ja aplicado)')

@@ -1,0 +1,24 @@
+From d3ad22db4ea6db6ea0843cd98748d378163c3973 Mon Sep 17 00:00:00 2001
+From: Vincent Sanders <vince@kyllikki.org>
+Date: Mon, 23 Feb 2026 20:18:01 +0000
+Subject: [PATCH] Fix path parsing leaking a dom string reference
+
+---
+ src/svgtiny.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/svgtiny.c b/src/svgtiny.c
+index ab49f8f..4e3c8f4 100644
+--- a/src/svgtiny.c
++++ b/src/svgtiny.c
+@@ -408,6 +408,7 @@ svgtiny_parse_path(dom_element *path, struct svgtiny_parse_state state)
+ 				      dom_string_byte_length(path_d_str),
+ 				      &p,
+ 		                      &i);
++	dom_string_unref(path_d_str);
+ 	if (res != svgtiny_OK) {
+ 		svgtiny_cleanup_state_local(&state);
+ 		return res;
+-- 
+2.43.0
+

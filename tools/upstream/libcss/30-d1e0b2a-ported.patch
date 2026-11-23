@@ -1,0 +1,40 @@
+Ported from libcss d1e0b2a (select: calc: Use macros for saturated fixed point values);
+the fpmath.h context differs in the netsurf-switch fork. Needed by 625edc4.
+
+diff --git a/include/libcss/fpmath.h b/include/libcss/fpmath.h
+--- a/include/libcss/fpmath.h
++++ b/include/libcss/fpmath.h
+@@ -22,6 +22,9 @@
+ /* type for fixed point numbers */
+ typedef int32_t css_fixed;
+ 
++#define F_MIN INT32_MIN /**< Smallest possible value (-2097152) */
++#define F_MAX INT32_MAX /**< Largest possible value (2097151.999) */
++
+ static inline css_fixed
+ css_add_fixed(const css_fixed x, const css_fixed y) {
+ 	int64_t xx = (int64_t)x + (int64_t)y;
+diff --git a/src/select/calc.c b/src/select/calc.c
+index e19c56b..ca829d5 100644
+--- a/src/select/calc.c
++++ b/src/select/calc.c
+@@ -264,11 +264,13 @@ css_error css_calculator_calculate(css_calculator *calc,
+ 			} else {
+ 				if (v_right == 0) {
+ 					if (v_left > 0)
+-						v_left = INT32_MAX;
++						v_left = F_MAX;
+ 					else if (v_left < 0)
+-						v_left = INT32_MIN;
++						v_left = F_MIN;
++					/* 0 / 0 stays 0 */
+ 				} else {
+-					v_left = css_divide_fixed(v_left, v_right);
++					v_left = css_divide_fixed(
++							v_left, v_right);
+ 				}
+ 			}
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,45 @@
+From 499f1c4601ad39942fd1b2204053a387bec9b989 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Sun, 23 Aug 2026 14:44:46 +0200
+Subject: [PATCH] parse: don't dereference the end of the token vector in
+ calc()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+css__parse_calc_value() peeks the token it is about to parse and, unless it
+is a '(', switches on token->type — but parserutils_vector_peek() returns
+NULL at the end of the vector. Unfinished expression e.g. 'calc(1px*'
+crashes the parser here.
+
+The other three functions in the group (calc_sum, calc_product,
+calc_number) all check for the NULL; only this one assumed a token.
+
+The three test entries are all of that same shape: an operator, then the end
+of the sheet. The truncation has to happen inside a NESTED block —
+'@media all{* {' and no closing brace — or the parser never gets far enough.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/parse/properties/utils.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/parse/properties/utils.c b/src/parse/properties/utils.c
+index 9e4ef08..1528ed3 100644
+--- a/src/parse/properties/utils.c
++++ b/src/parse/properties/utils.c
+@@ -1867,6 +1867,10 @@ css__parse_calc_value(css_language *c,
+ 
+ 	/* On entry, we are already pointing at the value to parse, so peek it */
+ 	token = parserutils_vector_peek(vector, *ctx);
++	if (token == NULL) {
++		return CSS_INVALID;
++	}
++
+ 	if (tokenIsChar(token, '(')) {
+ 		parserutils_vector_iterate(vector, ctx);
+ 		consumeWhitespace(vector, ctx);
+-- 
+2.43.0
+

@@ -1,0 +1,47 @@
+From dd7fad141c627f8a19ae1a35fedc5c7f2db86afb Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Fri, 9 Oct 2026 19:16:43 +0200
+Subject: [PATCH] select: unit: len2css_px rounded the size of a unit, not the
+ length
+
+css_unit_len2css_px() rounded px_per_unit to a whole pixel before
+multiplying by the length. A unit is rarely a whole number of pixels:
+1vh in a 480px viewport is 4.8px, so 100vh came out 500px, and 1pt is
+1.33px, so 12pt came out 12px. The calc() evaluator converts every
+length through this, so `calc(100vh - 50px)` was 450px tall in a
+480px viewport.
+
+The product is now exact, and rounding is left to the caller, which
+truncates or rounds the length it gets. css_unit_len2px_mq() keeps its
+rounding: media queries compare against whole pixels.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/unit.c | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/src/select/unit.c b/src/select/unit.c
+index 3cd3eed..0a6697f 100644
+--- a/src/select/unit.c
++++ b/src/select/unit.c
+@@ -322,12 +322,10 @@ css_fixed css_unit_len2css_px(
+ 			unit,
+ 			ctx->pw);
+ 
+-	/* Ensure we round px_per_unit to the nearest whole number of pixels:
+-	 * the use of FIXTOINT() below will truncate. */
+-	px_per_unit += F_0_5;
+-
+-	/* Calculate total number of pixels */
+-	return FMUL(length, TRUNCATEFIX(px_per_unit));
++	/* Not rounded: a unit is rarely a whole number of pixels -- 1vh in a
++	 * 480px viewport is 4.8, 1pt is 1.33 -- and rounding it first made
++	 * 100vh 500px and 12pt 12px. */
++	return FMUL(length, px_per_unit);
+ }
+ 
+ /* Exported function, documented in libcss/unit.h. */
+-- 
+2.43.0
+

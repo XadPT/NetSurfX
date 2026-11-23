@@ -1,0 +1,44 @@
+From 5f64dc9a8c68833913bed4c279f7dead2bc331d8 Mon Sep 17 00:00:00 2001
+From: Michael Drake <tlsa@netsurf-browser.org>
+Date: Mon, 2 Nov 2026 20:15:12 +0000
+Subject: [PATCH] gif: Restore background uses transparent when there's no
+ valid index
+
+---
+ include/nsgif.h | 6 +++++-
+ src/gif.c       | 2 +-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/include/nsgif.h b/include/nsgif.h
+index a84a84b..3a7fb2e 100644
+--- a/include/nsgif.h
++++ b/include/nsgif.h
+@@ -387,7 +387,11 @@ typedef struct nsgif_info {
+ 	uint32_t frame_count;
+ 	/** number of times to play animation (zero means loop forever) */
+ 	int loop_max;
+-	/** background colour in same pixel format as \ref nsgif_bitmap_t. */
++	/**
++	 * background colour in same pixel format as \ref nsgif_bitmap_t.
++	 * Transparent if there is no global palette, or the background index
++	 * is outside the palette.
++	 */
+ 	uint32_t background;
+ 	/** whether the GIF has a global colour table */
+ 	bool global_palette;
+diff --git a/src/gif.c b/src/gif.c
+index 73814bf..a7b7ad9 100644
+--- a/src/gif.c
++++ b/src/gif.c
+@@ -1734,7 +1734,7 @@ nsgif_error nsgif_data_scan(
+ 			size_t bg_idx = gif->bg_index;
+ 			gif->info.background = gif->global_colour_table[bg_idx];
+ 		} else {
+-			gif->info.background = gif->global_colour_table[0];
++			gif->info.background = NSGIF_TRANSPARENT_COLOUR;
+ 		}
+ 	}
+ 
+-- 
+2.43.0
+

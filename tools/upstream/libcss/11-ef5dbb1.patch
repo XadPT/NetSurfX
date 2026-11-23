@@ -1,0 +1,55 @@
+From ef5dbb19a8d39c754186ba43efd9c0a7b3a5262e Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Fri, 24 Jul 2026 21:48:26 +0200
+Subject: [PATCH] parse: flex: parse flex-shrink before flex-basis in the
+ shorthand
+
+The flex shorthand loop tried the longhands in the order grow, basis,
+shrink.  Because the flex-basis <length> parser also accepts a bare 0,
+`flex: 0 0 600px` mis-assigned the second 0 to flex-basis and was then
+left with 600px to parse as flex-shrink (a number), which fails and
+invalidates the whole declaration.
+
+The two <number> values are flex-grow and flex-shrink, so try shrink
+before basis; a unit-bearing length or percentage still falls through to
+basis.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/parse/properties/flex.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/parse/properties/flex.c b/src/parse/properties/flex.c
+index a29309b..68c309c 100644
+--- a/src/parse/properties/flex.c
++++ b/src/parse/properties/flex.c
+@@ -119,18 +119,18 @@ css_error css__parse_flex(css_language *c,
+ 			goto css__parse_flex_cleanup;
+ 		}
+ 
+-		if ((grow) && 
++		if ((grow) &&
+ 			   (error = css__parse_flex_grow(c, vector,
+ 				ctx, grow_style)) == CSS_OK) {
+ 			grow = false;
+-		} else if ((basis) && 
+-			   (error = css__parse_flex_basis(c, vector, 
+-				ctx, basis_style)) == CSS_OK) {
+-			basis = false;
+-		} else if ((shrink) && 
+-			   (error = css__parse_flex_shrink(c, vector, 
++		} else if ((shrink) &&
++			   (error = css__parse_flex_shrink(c, vector,
+ 				ctx, shrink_style)) == CSS_OK) {
+ 			shrink = false;
++		} else if ((basis) &&
++			   (error = css__parse_flex_basis(c, vector,
++				ctx, basis_style)) == CSS_OK) {
++			basis = false;
+ 		}
+ 
+ 		if (error == CSS_OK) {
+-- 
+2.43.0
+

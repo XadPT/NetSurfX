@@ -167,8 +167,8 @@ long sysconf(int name) { (void)name; return -1; }
 
 char *getcwd(char *buf, size_t size)
 {
-	if (buf == NULL || size < 3) return NULL;
-	strcpy(buf, "D:\\");
+	if (buf == NULL || size < 4) return NULL;   /* "D:\\" + NUL */
+	memcpy(buf, "D:\\", 4);
 	return buf;
 }
 

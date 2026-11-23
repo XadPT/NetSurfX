@@ -40,6 +40,9 @@ nserror fb_local_history_present(fbtk_widget_t *parent, struct browser_window *b
  */
 nserror fb_local_history_hide(void);
 
+/** true while the local history window is on screen */
+bool fb_local_history_visible(void);
+
 /**
  * Destroys the local history window and performs any other necessary cleanup
  * actions.

@@ -1,0 +1,46 @@
+From c958054cb1fe303c298f7c791b1ba348cfc1ff4a Mon Sep 17 00:00:00 2001
+From: John-Mark Bell <jmb@netsurf-browser.org>
+Date: Fri, 25 Sep 2026 14:27:25 +0100
+Subject: [PATCH] Account for trailing padding byte in RLE encodings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Issue-Reported-By: He Huang / NexusSan
+Issue-Reported-By: Viacheslav (Slava) Radiukov
+Issue-Reported-By: 走出慧太(Keita Sode)
+---
+ src/libnsbmp.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/libnsbmp.c b/src/libnsbmp.c
+index f33bdee..e99bff9 100644
+--- a/src/libnsbmp.c
++++ b/src/libnsbmp.c
+@@ -982,8 +982,9 @@ bmp_decode_rle8(bmp_image *bmp, uint8_t *data, int bytes)
+                                 }
+ 
+                                 /* Ensure that there is sufficient input data
+-                                 * to advance to the next command (if any) */
+-                                if (data + length > end)
++                                 * (including trailing padding) to advance to
++                                 * the next command (if any) */
++                                if (data + ((length + 1) & ~1) > end)
+                                         return BMP_INSUFFICIENT_DATA;
+ 
+                                 data += length;
+@@ -1154,8 +1155,9 @@ bmp_decode_rle4(bmp_image *bmp, uint8_t *data, int bytes)
+                                 length = (length + 1) / 2;
+ 
+                                 /* Ensure that there is sufficient input data
+-                                 * to advance to the next command (if any) */
+-                                if (data + length > end)
++                                 * (including trailing padding) to advance to
++                                 * the next command (if any) */
++                                if (data + ((length + 1) & ~1) > end)
+                                         return BMP_INSUFFICIENT_DATA;
+ 
+                                 data += length;
+-- 
+2.43.0
+

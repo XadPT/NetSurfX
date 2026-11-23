@@ -1,0 +1,38 @@
+From 5400b308d27a41f426b26e405cb4ea04f6b1a3da Mon Sep 17 00:00:00 2001
+From: Michael Drake <tlsa@netsurf-browser.org>
+Date: Sun, 15 Nov 2026 13:30:28 +0000
+Subject: [PATCH] select: computed: Round width to the nearest pixel instead of
+ down
+
+---
+ src/select/computed.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/select/computed.c b/src/select/computed.c
+index 846d109..2338a8f 100644
+--- a/src/select/computed.c
++++ b/src/select/computed.c
+@@ -777,7 +777,7 @@ uint8_t css_computed_width_px(
+ 					available_px, value.calc,
+ 					style, &unit, &value.value) == CSS_OK) {
+ 				type = CSS_WIDTH_SET;
+-				*px_out = FIXTOINT(value.value);
++				*px_out = FIXTOINT(FROUND(value.value));
+ 			} else {
+ 				type = CSS_WIDTH_AUTO;
+ 			}
+@@ -793,9 +793,9 @@ uint8_t css_computed_width_px(
+ 					available_px);
+ 			break;
+ 		default:
+-			*px_out = FIXTOINT(css_unit_len2device_px(
++			*px_out = FIXTOINT(FROUND(css_unit_len2device_px(
+ 					style, unit_ctx,
+-					value.value, unit));
++					value.value, unit)));
+ 			break;
+ 		}
+ 		break;
+-- 
+2.43.0
+

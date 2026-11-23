@@ -45,9 +45,9 @@ void nsx_fatal(const char *msg)
 {
 	/* sem a interface grafica: escreve no ecra com a consola do nxdk */
 	debugClearScreen();
-	debugPrint("\n\n   NetSurfX nao conseguiu arrancar:\n\n   %s\n\n", msg);
-	debugPrint("   Confirma que a pasta 'res' esta ao lado do default.xbe.\n");
-	debugPrint("   A voltar ao dashboard dentro de 15 segundos...\n");
+	debugPrint("\n\n   NetSurfX could not start:\n\n   %s\n\n", msg);
+	debugPrint("   Make sure the 'res' folder is next to default.xbe.\n");
+	debugPrint("   Returning to the dashboard in 15 seconds...\n");
 	Sleep(15000);
 	for (;;) {
 		XLaunchXBE(NULL);

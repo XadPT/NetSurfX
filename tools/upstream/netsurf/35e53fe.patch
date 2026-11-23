@@ -1,0 +1,48 @@
+From 35e53fefacdcbf39d108a8880570995e47a357dc Mon Sep 17 00:00:00 2001
+From: John-Mark Bell <jmb@netsurf-browser.org>
+Date: Wed, 28 Oct 2026 14:12:36 +0000
+Subject: [PATCH] Corestrings: track initialisation state
+
+No functional change in reality (because we only ever call init
+and fini once), but prevents memory leaks in the test suite
+(which calls them multiple times)
+---
+ utils/corestrings.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/utils/corestrings.c b/utils/corestrings.c
+index f0ce146..f706d95 100644
+--- a/utils/corestrings.c
++++ b/utils/corestrings.c
+@@ -36,9 +36,16 @@
+ #undef CORESTRING_DOM_VALUE
+ #undef CORESTRING_NSURL
+ 
++static int corestrings_initialised;
++
+ /* exported interface documented in utils/corestrings.h */
+ nserror corestrings_fini(void)
+ {
++	if (corestrings_initialised == 0) {
++		return NSERROR_OK;
++	}
++	corestrings_initialised = 0;
++
+ #define CORESTRING_LWC_VALUE(NAME,VALUE)				\
+ 	do {								\
+ 		lwc_string_unref(corestring_lwc_##NAME);		\
+@@ -79,6 +86,11 @@ nserror corestrings_init(void)
+ 	nserror error;
+ 	dom_exception exc;
+ 
++	if (corestrings_initialised == 1) {
++		return NSERROR_OK;
++	}
++	corestrings_initialised = 1;
++
+ #define CORESTRING_LWC_VALUE(NAME,VALUE)				\
+ 	do {								\
+ 		lerror = lwc_intern_string(				\
+-- 
+2.43.0
+

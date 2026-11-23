@@ -1,0 +1,25 @@
+From 2255b2f74ef5bdbbc7ce75a0b7e6dc0afd875a07 Mon Sep 17 00:00:00 2001
+From: Daniel Lobl <daniel.lobl@shopify.com>
+Date: Sun, 25 Oct 2026 23:22:33 +0000
+Subject: [PATCH] lzw: Fix off-by-one on code reader slow path
+
+---
+ src/lzw.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lzw.c b/src/lzw.c
+index 3098ef5..b578344 100644
+--- a/src/lzw.c
++++ b/src/lzw.c
+@@ -177,7 +177,7 @@ static inline lzw_result lzw__read_code(
+ 		ctx->sb_bit += code_size;
+ 	} else {
+ 		/* Slow path: code spans sub-blocks */
+-		uint8_t byte_advance = (current_bit + code_size) >> 3;
++		uint8_t byte_advance = (current_bit + code_size - 1) >> 3;
+ 		uint8_t byte = 0;
+ 		uint8_t bits_remaining_0 = (code_size < (8u - current_bit)) ?
+ 				code_size : (8u - current_bit);
+-- 
+2.43.0
+

@@ -385,6 +385,12 @@ void nsfb_xbox_handle_hotplug(const void *sdl_event)
 
 static void present(nsfb_t *nsfb, xb_priv *p)
 {
+	if (nsx_screen_frozen()) return;          /* crash screen is up */
+	if (nsx_take_full_redraw()) {             /* a notice was drawn over the page */
+		p->dbox.x0 = 0; p->dbox.y0 = 0;
+		p->dbox.x1 = nsfb->width; p->dbox.y1 = nsfb->height;
+		p->dirty = true;
+	}
 	if (!p->dirty) return;
 	VIDEO_MODE vm = XVideoGetMode();
 	uint8_t *vfb = XVideoGetFB();

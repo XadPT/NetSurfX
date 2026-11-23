@@ -1,0 +1,50 @@
+# NetSurfX options. Most of them are changed in Start > Settings, which
+# writes data\Choices for you. For the others: rename this file to
+# "Choices" (no extension), remove the # from the lines you want and
+# adjust the values.
+#
+# Home page:
+#homepage_url:file:///D:/res/home.html
+#
+# TV overscan margin, in pixels on each side (0 = full screen):
+#xbox_overscan_x:16
+#xbox_overscan_y:12
+#
+# Try 720p (component cable and 720p enabled in the dashboard). 1 = yes
+#xbox_hd:0
+#
+# Address bar search engine (exact name):
+#   DuckDuckGo, DuckDuckGo Lite, Wikipedia, Mojeek, FrogFind
+#search_web_provider:DuckDuckGo
+#
+# Base font size in tenths of a point (128 = 12.8 pt) and minimum
+#font_size:128
+#font_min_size:100
+#
+# Block ads (1) and load images (1)
+#block_advertisements:1
+#foreground_images:1
+#background_images:1
+#
+# Memory for cached pages and images (bytes). 0 = automatic, sized from
+# the free RAM at start-up (recommended)
+#memory_cache_size:0
+#
+# Disk cache (D:\cache) size in bytes (0 = off) and days to keep entries
+#disc_cache_size:67108864
+#disc_cache_age:14
+#
+# USB keyboard layout: 1 = US, 0 = Portuguese
+#xbox_kbd_us:1
+#
+# D-pad: 1 = jump between links, 0 = scroll the page
+#xbox_dpad_links:1
+#
+# Site version: 0 desktop, 1 mobile, 2 lite (old phone), 3 text
+#xbox_ua_mode:0
+#
+# Download folder
+#xbox_download_dir:E:\Downloads
+#
+# Language sent to web sites
+#accept_language:en-US, en

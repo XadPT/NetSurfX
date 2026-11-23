@@ -113,8 +113,8 @@ int nsx_net_state(void) { return g_state; }
 void nsx_net_describe(char *buf, size_t n)
 {
 	switch (g_state) {
-	case 1:  snprintf(buf, n, "Rede: IP %s, DNS %s", g_ip, g_dns); break;
-	case -1: snprintf(buf, n, "Rede: sem endereco (cabo ligado? router com DHCP?)"); break;
-	default: snprintf(buf, n, "Rede: a ligar..."); break;
+	case 1:  snprintf(buf, n, "Network: IP %s, DNS %s", g_ip, g_dns); break;
+	case -1: snprintf(buf, n, "Network: no address (cable plugged in? DHCP on the router?)"); break;
+	default: snprintf(buf, n, "Network: connecting..."); break;
 	}
 }

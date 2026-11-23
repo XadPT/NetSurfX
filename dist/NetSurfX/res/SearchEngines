@@ -1,4 +1,5 @@
+DuckDuckGo|html.duckduckgo.com|https://html.duckduckgo.com/html/?q=%s|https://duckduckgo.com/favicon.ico|
 DuckDuckGo Lite|lite.duckduckgo.com|https://lite.duckduckgo.com/lite/?q=%s|https://lite.duckduckgo.com/favicon.ico|
+Wikipedia|en.wikipedia.org|https://en.wikipedia.org/w/index.php?search=%s|https://en.wikipedia.org/favicon.ico|
+Mojeek|www.mojeek.com|https://www.mojeek.com/search?q=%s|https://www.mojeek.com/favicon.ico|
 FrogFind|frogfind.com|http://frogfind.com/?q=%s|http://frogfind.com/favicon.ico|
-Google|www.google.com|https://www.google.com/search?q=%s&gbv=1|https://www.google.com/favicon.ico|
-Wikipedia|pt.wikipedia.org|https://pt.wikipedia.org/w/index.php?search=%s|https://pt.wikipedia.org/favicon.ico|

@@ -1,0 +1,25 @@
+From 83c4d9a684c1ec7c1f6522bb88f3550b63e596c9 Mon Sep 17 00:00:00 2001
+From: Michael Drake <tlsa@netsurf-browser.org>
+Date: Mon, 19 Oct 2026 22:50:09 +0100
+Subject: [PATCH] properties: column-gap: Fix unit mask to allow percentage
+
+---
+ src/parse/properties/properties.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/parse/properties/properties.h b/src/parse/properties/properties.h
+index 17b7f41..fc43fac 100644
+--- a/src/parse/properties/properties.h
++++ b/src/parse/properties/properties.h
+@@ -559,7 +559,7 @@ extern const uint32_t property_unit_mask[CSS_N_PROPERTIES];
+ #define UNIT_MASK_BREAK_INSIDE          (0)
+ #define UNIT_MASK_COLUMN_COUNT          (0)
+ #define UNIT_MASK_COLUMN_FILL           (0)
+-#define UNIT_MASK_COLUMN_GAP            (UNIT_LENGTH)
++#define UNIT_MASK_COLUMN_GAP            (UNIT_LENGTH | UNIT_PCT)
+ #define UNIT_MASK_COLUMN_RULE_COLOR     (0)
+ #define UNIT_MASK_COLUMN_RULE_STYLE     (0)
+ #define UNIT_MASK_COLUMN_RULE_WIDTH     (UNIT_LENGTH)
+-- 
+2.43.0
+

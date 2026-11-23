@@ -107,7 +107,35 @@ HANDLE CreateThread(void *attr, size_t stack, LPTHREAD_START_ROUTINE fn, LPVOID 
 	if (pthread_create(&th, &pa, thr_main, t) != 0) { free(t); return NULL; }
 	return (HANDLE)1;
 }
-BOOL CloseHandle(HANDLE h) { (void)h; return 1; }
+struct hfile { uint32_t magic; FILE *f; };
+#define HFILE_MAGIC 0x46494c45u
+HANDLE CreateFileA(const char *p, DWORD acc, DWORD share, void *sa, DWORD disp, DWORD attr, HANDLE tmpl)
+{
+	char path[512];
+	struct hfile *h;
+	(void)acc; (void)share; (void)sa; (void)disp; (void)attr; (void)tmpl;
+	tpath(path, sizeof path, p);
+	h = malloc(sizeof *h);
+	h->magic = HFILE_MAGIC;
+	h->f = fopen(path, "ab");
+	if (h->f == NULL) { free(h); return INVALID_HANDLE_VALUE; }
+	return h;
+}
+BOOL WriteFile(HANDLE hh, const void *b, DWORD n, DWORD *wr, void *ov)
+{
+	struct hfile *h = hh; (void)ov;
+	*wr = (DWORD)fwrite(b, 1, n, h->f);
+	return *wr == n;
+}
+DWORD SetFilePointer(HANDLE h, LONG d, LONG *hi, DWORD how) { (void)h; (void)d; (void)hi; (void)how; return 0; }
+BOOL CloseHandle(HANDLE hh)
+{
+	struct hfile *h = hh;
+	if (h != NULL && h != INVALID_HANDLE_VALUE && (uintptr_t)h > 4096 && h->magic == HFILE_MAGIC) {
+		fclose(h->f); h->magic = 0; free(h);
+	}
+	return 1;
+}
 void Sleep(DWORD ms) { usleep(ms * 1000); }
 static uint64_t now_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000ull + ts.tv_nsec / 1000000; }
 DWORD GetTickCount(void) { return (DWORD)now_ms(); }

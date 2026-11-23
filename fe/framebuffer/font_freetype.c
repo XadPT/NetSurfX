@@ -356,7 +356,7 @@ fb_new_face(const char *option, const char *resname, const char *fontname)
                 newf->fontfile = strdup(option);
         } else {
 		if (filepath_sfind(respaths, buf, fontname) == NULL) {
-			NSLOG(netsurf, ERROR, "Fonte em falta: %s", fontname);
+			NSLOG(netsurf, ERROR, "Missing font: %s", fontname);
 			free(newf);
 			return NULL;
 		}
