@@ -1,8 +1,18 @@
-NetSurfX 0.8.1 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.8.2 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.8.2
+  - Fixed the crash on DuckDuckGo (and other pages laid out with CSS grid):
+    the grid code sorted its items with a comparison that was not a valid
+    ordering, and the Xbox C library's sort then ran off the end of the
+    list. The comparison is fixed, and the sort itself was replaced by one
+    that can never leave the list, whatever it is given.
+  - Settings menu no longer flickers when an option is changed.
+  - Start-up screen with the NetSurf logo ("Original Xbox Edition") while
+    the browser loads; any button skips it.
 
 NEW IN 0.8.1
   Fixes brought in from the official NetSurf project (newer than the

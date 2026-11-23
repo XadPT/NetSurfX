@@ -725,6 +725,11 @@ static size_t fit_len(const char *s, int max_chars)
 
 /* lista vertical modal. Devolve o indice escolhido (A, ou esquerda/direita
  * se dir != NULL: *dir = -1/+1, 0 para A) ou -1 se fechado (B/Start/Back). */
+/* menus shown one after another (Settings): keep the screen between them
+ * instead of repainting the page underneath each time, which flickered */
+static bool g_menu_keep;
+void nsx_menu_keep(bool keep) { g_menu_keep = keep; }
+
 int nsx_menu(const char *title, const char *const *labels, int n, int sel,
 	     const char *hint, int *dir)
 {
@@ -790,7 +795,8 @@ int nsx_menu(const char *title, const char *const *labels, int n, int sel,
 done:
 	ui_drain();
 	nsfb_xbox_block_input(false);
-	ui_restore();
+	if (!(g_menu_keep && result >= 0))
+		ui_restore();
 	return result;
 }
 

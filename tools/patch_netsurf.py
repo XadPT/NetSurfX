@@ -124,6 +124,24 @@ edit('netsurf/content/textsearch.c',
      '\tfree_matches(textsearch);\n\tfree(textsearch->found); /* NSX searchhead */\n\tfree(textsearch);\n',
      'NSX searchhead')
 
+# 15. layout_grid.c (netsurf-switch fork): the grid item sort compared item
+#     ADDRESSES for document order and never returned 0, even for an item
+#     against itself. That is not a valid ordering; pdclib's quicksort then
+#     ran off the array and crashed (seen on html.duckduckgo.com, v0.8.1).
+#     Keep the document index in the item and compare that.
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\tbool placed_r, placed_c;\n\tint order;\n};\n',
+     '\tbool placed_r, placed_c;\n\tint order;\n\tint idx; /* NSX gridsort: document order */\n};\n',
+     'NSX gridsort: document order')
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\tif (x->order != y->order)\n\t\treturn x->order - y->order;\n\t/* stable: keep document order */\n\treturn (x < y) ? -1 : 1;\n',
+     '\tif (x->order != y->order) /* NSX gridsort cmp */\n\t\treturn x->order < y->order ? -1 : 1;\n\t/* stable: keep document order */\n\treturn (x->idx > y->idx) - (x->idx < y->idx);\n',
+     'NSX gridsort cmp')
+edit('netsurf/content/handlers/html/layout_grid.c',
+     '\t\tit->box = b;\n\t\tif (b->style != NULL)\n\t\t\tcss_computed_order(b->style, &order);\n',
+     '\t\tit->box = b;\n\t\tit->idx = i - 1; /* NSX gridsort idx */\n\t\tif (b->style != NULL)\n\t\t\tcss_computed_order(b->style, &order);\n',
+     'NSX gridsort idx')
+
 # 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
 #     mirrored on github.com/netsurf-browser) that are newer than the
 #     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied

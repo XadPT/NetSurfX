@@ -14,6 +14,8 @@ void nsx_help_show(void);
 void nsx_bookmarks_init(void);
 bool nsx_bookmark_add(struct browser_window *bw);
 void nsx_toast(const char *msg);
+/* keep the screen when a menu returns a choice (menus redrawn in a loop) */
+void nsx_menu_keep(bool keep);
 int nsx_menu(const char *title, const char *const *labels, int n, int sel,
 	     const char *hint, int *dir);
 const char *nsx_history_page(void);

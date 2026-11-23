@@ -78,8 +78,9 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_kbd.h"
 #include "xbox_download.h"
 #include "xbox_perf.h"
+#include "xbox_splash.h"
 
-#define NSX_VERSION "0.8.1-test"
+#define NSX_VERSION "0.8.2-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -1119,6 +1120,7 @@ static void fb_settings_menu(struct gui_window *gw)
 	int sel = 0, dir;
 	bool changed = false;
 
+	nsx_menu_keep(true);
 	for (;;) {
 		const char *prov = nsoption_charp(search_web_provider);
 		const char *cur = NULL;
@@ -1218,6 +1220,7 @@ static void fb_settings_menu(struct gui_window *gw)
 		}
 		changed = true;
 	}
+	nsx_menu_keep(false);
 	if (changed) {
 		fb_save_choices();
 		/* imagens/anuncios: aplica-se ao recarregar */
@@ -3282,7 +3285,8 @@ main(int argc, char** argv)
 	if (nsfb == NULL)
 		die("Unable to initialise framebuffer");
 
-	framebuffer_set_cursor(&pointer_image);
+	/* splash screen while fonts, history and cookies load */
+	nsx_splash_show(nsfb);
 
 	if (fb_font_init() == false)
 		die("Could not load the fonts (res\\fonts)");
@@ -3300,6 +3304,9 @@ main(int argc, char** argv)
 
 	urldb_load("D:\\data\\URLs");
 	urldb_load_cookies(nsoption_charp(cookie_file));
+
+	nsx_splash_finish();
+	framebuffer_set_cursor(&pointer_image);     /* no pointer on the splash */
 
 	/* create an initial browser window */
 
