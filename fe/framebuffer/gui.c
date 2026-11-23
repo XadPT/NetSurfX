@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <nsutils/time.h>
 
@@ -80,7 +81,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_perf.h"
 #include "xbox_splash.h"
 
-#define NSX_VERSION "0.8.2-test"
+#define NSX_VERSION "0.8.3-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -3226,7 +3227,12 @@ main(int argc, char** argv)
 		rename("D:\\NETSURF.LOG", "D:\\NETSURF.OLD");
 		remove("D:\\NETSURF.LOG");
 		xargc = 3;
-		nslog_init(nslog_stream_configure, &xargc, xargv);
+		if (nslog_init(nslog_stream_configure, &xargc, xargv) != NSERROR_OK) {
+			char m[160];
+			snprintf(m, sizeof m, "NetSurfX %s: could not open D:\\NETSURF.LOG (errno %d); "
+				 "running without a log\n\n", NSX_VERSION, errno);
+			nsx_diag_note("D:\\NSX-ERROR.LOG", m);
+		}
 	} else {
 		xargc = 1;
 		nslog_init(nslog_stream_configure, &xargc, nargv);

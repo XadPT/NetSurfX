@@ -1,8 +1,16 @@
-NetSurfX 0.8.2 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.8.3 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.8.3
+  - Fixed a crash when returning to the dashboard (L+R+Back+Black) in a
+    session where NETSURF.LOG could not be opened: the log was closed
+    without existing. If the log cannot be opened, NSX-ERROR.LOG now says
+    so, with the reason.
+  - Fixed a timing value shared between the network threads and the main
+    thread without a lock (found by the thread checker on the PC).
 
 NEW IN 0.8.2
   - Fixed the crash on DuckDuckGo (and other pages laid out with CSS grid):

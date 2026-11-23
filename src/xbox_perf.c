@@ -148,6 +148,12 @@ static void append_durable(const char *path, const char *text, size_t len)
 	CloseHandle(h);
 }
 
+void nsx_diag_note(const char *path, const char *text)
+{
+	if (path && text && can_do_io())
+		append_durable(path, text, strlen(text));
+}
+
 /* ---------------------------------------------------------------- NETSURF.LOG */
 
 static FILE *g_fp;

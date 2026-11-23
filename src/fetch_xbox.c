@@ -1148,8 +1148,9 @@ static DWORD WINAPI worker(LPVOID arg)
 {
 	struct xf *f = arg;
 	run_request(f);
-	f->t_end = GetTickCount();
 	EnterCriticalSection(&g_lock);
+	/* inside the lock: the main thread reads it once the result is set */
+	f->t_end = GetTickCount();
 	if (f->result == XR_RUNNING) {
 		f->result = XR_ERROR;
 		snprintf(f->err, sizeof f->err, "Fetch failed");
@@ -1503,6 +1504,7 @@ static void xf_poll_one(struct xf *f)
 	bool hdr_complete, chain_ready;
 	struct cert_chain *chain;
 	enum xf_result result;
+	uint32_t t_end;
 	char err[160];
 	fetch_msg msg;
 
@@ -1518,6 +1520,7 @@ static void xf_poll_one(struct xf *f)
 	chain_ready = f->chain_ready;
 	chain = f->chain;
 	result = f->result;
+	t_end = f->t_end;
 	memcpy(err, f->err, sizeof err);
 	LeaveCriticalSection(&g_lock);
 
@@ -1588,7 +1591,7 @@ static void xf_poll_one(struct xf *f)
 		}
 		{
 			/* diagnostico: tempos de cada pedido (ver NETSURF.LOG) */
-			uint32_t te = f->t_end ? f->t_end : GetTickCount();
+			uint32_t te = t_end ? t_end : GetTickCount();
 			NSLOG(netsurf, INFO, "[NET] %s code=%ld res=%d %ub %ums (conn %s +%ums, tls %ums, first byte +%ums) %s",
 			      nsurl_access(f->url), f->http_code, result, (unsigned)f->bytes_in,
 			      (unsigned)(te - f->t0), f->reused ? "reused" : "new",

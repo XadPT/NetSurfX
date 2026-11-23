@@ -2,6 +2,11 @@
 
 All dates are 2026.
 
+## v0.8.3 (test build) — 23 Nov
+- Crash on exit to the dashboard (IGR) in a session whose `NETSURF.LOG` could not be opened: `nslog_finalise()` called `fclose(NULL)`, and logging after finalise would write to a NULL stream (patch 16). A failed log open is now recorded in `NSX-ERROR.LOG` with `errno`. Reproduced and verified on the PC by making the log path unopenable.
+- Data race (TSan, intermittent): the fetch worker wrote `t_end` outside `g_lock` while the main thread read it; now written under the lock and snapshotted with the result.
+- `run_all.sh` keeps the log of every failing script (`fail_*.log`).
+
 ## v0.8.2 (test build) — 23 Nov
 - **Crash on html.duckduckgo.com fixed** (first crash captured by the v0.8 crash handler: access violation in `qsort` under `g_setup` in `layout_grid.c`). The netsurf-switch grid code sorted items with a comparator that compared item addresses and never returned 0, not even for an item against itself; pdclib's quicksort has no bounds checks in its partition scans and walked off the array. The comparator now uses a document index (patch 15 in `tools/patch_netsurf.py`), and `qsort` is replaced program-wide by a bounds-safe insertion sort/heapsort in `src/xbox_libc.c` that cannot leave the array whatever the comparator returns (unit-tested with inconsistent and random comparators under ASan).
 - Settings menu: no repaint of the page between successive menus (`nsx_menu_keep`), which caused the flicker on every change.

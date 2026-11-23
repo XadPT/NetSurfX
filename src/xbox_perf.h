@@ -40,6 +40,8 @@ bool nsx_screen_frozen(void);
 bool nsx_take_full_redraw(void);
 /* version shown in hang and crash reports */
 void nsx_diag_set_version(const char *v);
+/* append a line to a diagnostics file and put it on the disk */
+void nsx_diag_note(const char *path, const char *text);
 
 /* failed assertions so far (written to D:\NSX-ERROR.LOG) */
 unsigned nsx_assert_count(void);

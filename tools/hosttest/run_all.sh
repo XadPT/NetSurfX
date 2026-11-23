@@ -11,7 +11,7 @@ for s in $S; do
   bad=$(grep -c "ERROR: AddressSanitizer\|runtime error:\|WARNING: ThreadSanitizer\|LeakSanitizer" out_$s.log)
   extra=""; ls xroot/NSX-*.LOG >/dev/null 2>&1 && extra="$(ls xroot/NSX-*.LOG | xargs -n1 basename | tr '\n' ' ')"
   printf "%-8s rc=%-3s san=%-3s %s\n" $s $rc $bad "$extra"
-  [ $rc -ne 0 -o $bad -ne 0 ] && fail=1
+  [ $rc -ne 0 -o $bad -ne 0 ] && { fail=1; cp out_$s.log fail_$s.log; }
 done
 pkill -f "python3 server.py"
 exit $fail

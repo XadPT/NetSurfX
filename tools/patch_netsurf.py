@@ -142,6 +142,14 @@ edit('netsurf/content/handlers/html/layout_grid.c',
      '\t\tit->box = b;\n\t\tit->idx = i - 1; /* NSX gridsort idx */\n\t\tif (b->style != NULL)\n\t\t\tcss_computed_order(b->style, &order);\n',
      'NSX gridsort idx')
 
+# 16. utils/log.c: when the -V log file could not be opened, logfile is
+#     NULL and nslog_finalise() called fclose(NULL) (crash on exit to the
+#     dashboard, v0.8.2). Also never write through a NULL stream.
+edit('netsurf/utils/log.c',
+     '\tverbose_log = true;\n\tif (logfile != stderr) {\n\t\tfclose(logfile);\n',
+     '\tverbose_log = (logfile != NULL); /* NSX logfinal */\n\tif (logfile != NULL && logfile != stderr) {\n\t\tfclose(logfile);\n',
+     'NSX logfinal')
+
 # 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
 #     mirrored on github.com/netsurf-browser) that are newer than the
 #     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied
