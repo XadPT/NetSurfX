@@ -2,6 +2,11 @@
 
 All dates are 2026.
 
+## v0.8.4 (test build) — 23 Nov
+- Memory guard (`fb_memory_guard`): below 12 MB free `llcache_clean(true)` every 5 s; below 7 MB the loading page is stopped with an on-screen message. The full CNN page had taken a 64 MB console to 7.4 MB. Testable on the PC with `NSX_FAKE_FREE_KB`.
+- Local history window: the page that was still loading painted over it (fbtk has no occlusion); the browser widget now skips drawing while it is shown, closing it (click or any controller command) repaints the page, and the graph is plotted at the widget position minus the scroll offset.
+- Single-word hosts (`https://google/`) are searched instead of failing DNS.
+
 ## v0.8.3 (test build) — 23 Nov
 - Crash on exit to the dashboard (IGR) in a session whose `NETSURF.LOG` could not be opened: `nslog_finalise()` called `fclose(NULL)`, and logging after finalise would write to a NULL stream (patch 16). A failed log open is now recorded in `NSX-ERROR.LOG` with `errno`. Reproduced and verified on the PC by making the log path unopenable.
 - Data race (TSan, intermittent): the fetch worker wrote `t_end` outside `g_lock` while the main thread read it; now written under the lock and snapshotted with the result.

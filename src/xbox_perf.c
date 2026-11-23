@@ -25,6 +25,7 @@
  * nsx.map produced by the same build (tools/symbolize.py).
  */
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
@@ -73,6 +74,16 @@ static void mem_stats(uint32_t *free_kb, uint32_t *total_kb)
 		*free_kb = ms.AvailablePages * 4;
 		*total_kb = ms.TotalPhysicalPages * 4;
 		return;
+	}
+#else
+	{
+		/* PC test harness: pretend free memory (memory guard tests) */
+		const char *e = getenv("NSX_FAKE_FREE_KB");
+		if (e != NULL) {
+			*free_kb = (uint32_t)strtoul(e, NULL, 10);
+			*total_kb = 65536;
+			return;
+		}
 	}
 #endif
 	*free_kb = 0;

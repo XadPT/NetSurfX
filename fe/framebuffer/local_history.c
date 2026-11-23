@@ -59,6 +59,8 @@ static struct fb_local_history_window *local_history_window = NULL;
  * \param y location of event
  * \return NSERROR_OK on success otherwise apropriate error code
  */
+nserror fb_local_history_hide(void);
+
 static nserror
 fb_local_history_mouse(struct fb_corewindow *fb_cw,
 		    browser_mouse_state mouse_state,
@@ -71,7 +73,8 @@ fb_local_history_mouse(struct fb_corewindow *fb_cw,
 	local_history_mouse_action(lhw->session, mouse_state, x, y);
 
 	if (mouse_state != BROWSER_MOUSE_HOVER) {
-		fbtk_set_mapping(lhw->core.wnd, false);
+		/* close it the same way as everywhere else (repaint the page) */
+		fb_local_history_hide();
 	}
 
 	return NSERROR_OK;
@@ -119,7 +122,15 @@ fb_local_history_draw(struct fb_corewindow *fb_cw, struct rect *r)
 	/* technically degenerate container of */
 	lhw = (struct fb_local_history_window *)fb_cw;
 
-	local_history_redraw(lhw->session, 0, 0, r, &ctx);
+	/* r is in content coordinates (it includes the scroll offset) and the
+	 * plotters draw in screen coordinates: plot the content shifted by the
+	 * widget position minus the scroll. Passing 0, 0 (as before) drew the
+	 * graph in the wrong place once scrolled, leaving the page visible
+	 * around it. The core clears the area itself. */
+	local_history_redraw(lhw->session,
+			     fbtk_get_absx(fb_cw->drawable) - fb_cw->scrollx,
+			     fbtk_get_absy(fb_cw->drawable) - fb_cw->scrolly,
+			     r, &ctx);
 
 	return NSERROR_OK;
 }
@@ -174,6 +185,16 @@ fb_local_history_init(fbtk_widget_t *parent,
 }
 
 
+/* the page underneath must not paint over the history window while it
+ * keeps loading (fbtk draws widgets without occlusion) */
+static bool history_shown;
+static fbtk_widget_t *history_parent;
+
+bool fb_local_history_visible(void)
+{
+	return history_shown;
+}
+
 /* exported function documented gtk/history.h */
 nserror fb_local_history_present(fbtk_widget_t *parent,
 				 struct browser_window *bw)
@@ -204,6 +225,8 @@ nserror fb_local_history_present(fbtk_widget_t *parent,
 
 		fbtk_set_zorder(local_history_window->core.wnd, INT_MIN);
 		fbtk_set_mapping(local_history_window->core.wnd, true);
+		history_shown = true;
+		history_parent = parent;
 		local_history_scroll_to_cursor(local_history_window->session);
 	}
 
@@ -216,8 +239,12 @@ nserror fb_local_history_hide(void)
 {
 	nserror res = NSERROR_OK;
 
+	history_shown = false;
 	if (local_history_window != NULL) {
 		fbtk_set_mapping(local_history_window->core.wnd, false);
+		/* the page was not drawn while the window was up: repaint all */
+		if (history_parent != NULL)
+			fbtk_request_redraw(history_parent);
 
 		res = local_history_set(local_history_window->session, NULL);
 	}

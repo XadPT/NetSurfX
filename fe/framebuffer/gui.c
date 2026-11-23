@@ -79,9 +79,10 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_kbd.h"
 #include "xbox_download.h"
 #include "xbox_perf.h"
+#include "content/llcache.h"
 #include "xbox_splash.h"
 
-#define NSX_VERSION "0.8.3-test"
+#define NSX_VERSION "0.8.4-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -452,6 +453,10 @@ fb_browser_window_redraw(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 		return -1;
 	}
 
+	/* local history window on top: draw the page once it is closed */
+	if (fb_local_history_visible())
+		return 0;
+
 	if (bwidget->pan_required) {
 		fb_pan(widget, bwidget, gw->bw);
 	}
@@ -652,6 +657,27 @@ static void fb_go_url_bw(struct browser_window *bw, const char *text)
 		nsx_toast("Invalid address");
 		return;
 	}
+	/* a web address whose host is a single word ("https://google/") can only
+	 * be a typing slip on a console: search for the word instead */
+	if (looks_like_url && strncmp(t, "about:", 6) != 0 && strncmp(t, "file:", 5) != 0) {
+		lwc_string *host = nsurl_get_component(url, NSURL_HOST);
+		if (host != NULL) {
+			const char *h = lwc_string_data(host);
+			size_t hl = lwc_string_length(host);
+			bool single = memchr(h, '.', hl) == NULL && memchr(h, ':', hl) == NULL &&
+				!(hl == 9 && strncasecmp(h, "localhost", 9) == 0);
+			if (single) {
+				char word[128];
+				nsurl *s2 = NULL;
+				snprintf(word, sizeof word, "%.*s", (int)hl, h);
+				if (search_web_omni(word, SEARCH_WEB_OMNI_SEARCHONLY, &s2) == NSERROR_OK) {
+					nsurl_unref(url);
+					url = s2;
+				}
+			}
+			lwc_string_unref(host);
+		}
+	}
 	browser_window_navigate(bw, url, NULL, BW_NAVIGATE_HISTORY, NULL, NULL, NULL);
 	nsurl_unref(url);
 }
@@ -691,8 +717,48 @@ static uint32_t g_stats_last;
 
 /* com a opcao ligada, a barra de estado mostra memoria e tempos quando o
  * browser esta parado (a cada 2 s, ou logo a seguir a carregar uma pagina) */
+/*
+ * Memory guard. Heavy pages (big news sites) can take most of the 64 MB:
+ * below LOW the unused cache is dropped; below CRIT loading of the page is
+ * stopped (what has arrived stays on screen) so the console never runs out
+ * of memory, which is when network buffers and decoders start failing.
+ */
+#define MEM_LOW_KB   (12 * 1024)
+#define MEM_CRIT_KB  (7 * 1024)
+
+static void fb_memory_guard(void)
+{
+	static uint32_t last_check, last_purge, last_stop;
+	uint32_t now = GetTickCount(), free_kb;
+	struct gui_window *gw;
+
+	if (now - last_check < 500) return;
+	last_check = now;
+	free_kb = nsx_mem_free_kb();
+	if (free_kb == 0 || free_kb >= MEM_LOW_KB) return;
+
+	if (now - last_purge > 5000) {
+		last_purge = now;
+		llcache_clean(true);
+		NSLOG(netsurf, WARNING, "[PERF] low memory (%u KB free): cache purged, now %u KB",
+		      (unsigned)free_kb, (unsigned)nsx_mem_free_kb());
+		free_kb = nsx_mem_free_kb();
+	}
+	gw = fb_current();
+	if (free_kb < MEM_CRIT_KB && gw != NULL && browser_window_stop_available(gw->bw) &&
+	    now - last_stop > 10000) {
+		last_stop = now;
+		browser_window_stop(gw->bw);
+		NSLOG(netsurf, WARNING, "[PERF] memory critical (%u KB free): page loading stopped",
+		      (unsigned)free_kb);
+		nsx_toast("Low memory: stopped loading this page (try its lite/mobile version)");
+	}
+}
+
 static void fb_stats_tick(void)
 {
+	fb_memory_guard();
+
 	static unsigned seen_asserts;
 	if (nsx_assert_count() != seen_asserts) {
 		/* um erro interno foi registado (e ignorado): avisa uma vez */
@@ -1461,6 +1527,11 @@ static void fb_handle_xbox_input(void)
 	fb_download_tick(gw);
 
 	while ((cmd = nsfb_xbox_pop_command()) != NSX_CMD_NONE) {
+		/* local history window open: any command but A (a click) closes it */
+		if (fb_local_history_visible()) {
+			fb_local_history_hide();
+			continue;
+		}
 		switch (cmd) {
 		case NSX_CMD_BACK:
 			if (browser_window_back_available(gw->bw))

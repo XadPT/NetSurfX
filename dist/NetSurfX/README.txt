@@ -1,8 +1,19 @@
-NetSurfX 0.8.3 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.8.4 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.8.4
+  - Memory guard: below 12 MB free the unused cache is dropped; below 7 MB
+    the page stops loading (what arrived stays on screen) and a message
+    suggests the site's lite or mobile version. Very heavy sites such as
+    the full CNN page could take the console down to 7 MB before.
+  - History view (the tree button): the page that was still loading no
+    longer paints over it, the page is redrawn when it closes, and any
+    controller button closes it.
+  - A web address whose name is a single word ("https://google/") is
+    searched for instead of failing with a DNS error.
 
 NEW IN 0.8.3
   - Fixed a crash when returning to the dashboard (L+R+Back+Black) in a
