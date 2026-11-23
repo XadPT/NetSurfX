@@ -2,6 +2,15 @@
 
 All dates are 2026.
 
+## v0.8.1 (test build) — 23 Nov
+Compared against the other NetSurf console ports (Switch, 3DS) and upstream NetSurf. The Switch fork has no newer commits and the 3DS port is older than our base; upstream NetSurf and its libraries had fixes the fork lacks. They are now kept as patches in `tools/upstream/<tree>/` and applied in order by `tools/patch_netsurf.py` (verified on a pristine fork):
+- libcss: `calc()` division by zero (SIGFPE crash, 113dc45), reads past the token vector in `calc()` and media lists (499f1c4, 006ffc4), `vh`/`vw` swapped (cbbeaaf), lengths rounded to the nearest pixel instead of truncated (5a55fad, dd7fad1, 5400b30, 204bad0, e6f6795, 2212165), saturating fixed-point add/subtract (625edc4, d1e0b2a ported), flex shorthand (ef5dbb1, 0c4f519), inline-style cascade origin (6d1a9ff), relative positioning (1e18694, 58bff86), column-gap percentages (83c4d9a), `calc()` whitespace (383b7bc), `::first-letter` (628abea).
+- libnsgif: LZW off-by-one (2255b2f), use of an unallocated previous frame (69c1120), background restore (5f64dc9).
+- libnsbmp: RLE trailing padding and odd widths (c958054, 3e54099, 66ca447).
+- libsvgtiny: DOM string leaks and error-path fixes (d3ad22d, 1785d0d, caae4d6), safer float→int in gradients (aea9336).
+- netsurf: `https://host:443/` normalised to the default port (597329f), bounded `realpath` fallback (703224c), corestrings init state (35e53fe), scripts inserted by JS (6ef837d).
+- NetSurfX: `getcwd()` wrote one byte past a 3-byte buffer.
+
 ## v0.8.0 (test build) — 23 Nov
 Stability
 - Root cause of the Google freeze addressed: nxdk's `LWIP_PLATFORM_ASSERT` asserts its message string (always true), so when the kernel pool allocation in the NIC receive DPC failed, `rx_callback` wrote through a null pointer at DISPATCH_LEVEL. The frame is now dropped and returned to the NIC (patch in `tools/patch_nxdk.py`).

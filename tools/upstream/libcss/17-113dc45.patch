@@ -1,0 +1,44 @@
+From 113dc4522ac441ae99eb38ec4eee422538255bcf Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Fri, 23 Oct 2026 17:03:47 +0200
+Subject: [PATCH] select: calc() fix crash (SIGFPE) by division by zero
+
+The parser does not refuse a zero divisor, and an expression with an
+operand it cannot fold e.g. `calc(150vw / 0)`, which reaches the
+selection-time calculator as bytecode, where css_divide_fixed() divided
+by 0 and the process dies on SIGFPE. This bug was found by fuzzing.
+
+CSS Values 4, 10.9: x / 0 is an infinity of x's sign, clamped to the
+largest value the property takes, and 0 / 0 is NaN, which a top-level
+calculation turns into 0. The calculator now returns signed infinity
+instead of crashing libcss.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/calc.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/select/calc.c b/src/select/calc.c
+index 387188e..e19c56b 100644
+--- a/src/select/calc.c
++++ b/src/select/calc.c
+@@ -262,7 +262,14 @@ css_error css_calculator_calculate(css_calculator *calc,
+ 			if (op == CALC_MULTIPLY) {
+ 				v_left = css_multiply_fixed(v_left, v_right);
+ 			} else {
+-				v_left = css_divide_fixed(v_left, v_right);
++				if (v_right == 0) {
++					if (v_left > 0)
++						v_left = INT32_MAX;
++					else if (v_left < 0)
++						v_left = INT32_MIN;
++				} else {
++					v_left = css_divide_fixed(v_left, v_right);
++				}
+ 			}
+ 
+ 			CALC_PUSH(u_left, v_left);
+-- 
+2.43.0
+

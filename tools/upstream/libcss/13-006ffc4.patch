@@ -1,0 +1,55 @@
+From 006ffc4096040da13690abc380e5f828ec08284d Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Sun, 30 Aug 2026 11:37:29 +0200
+Subject: [PATCH] parse: don't dereference the end of the token vector in a
+ media list
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+css__mq_parse_media_list() goes round the loop again after a trailing
+comma, so mq_parse_media_query() can be entered with the vector already
+exhausted.  Its first peek then returns NULL, and while tokenIsChar()
+tolerates that, the `else if` beside it reads token->type straight off
+the NULL.
+
+A stylesheet ending in an unterminated `@media),` is enough: the `)`
+fails the first query, the `,` sends the list round once more, and there
+is nothing left to parse.  Guard the branch and fall through to the
+iterate below, which reports CSS_INVALID — i.e. `not all`, the error
+handling MQ4 3.2 asks for.
+
+The three cases added to mq.dat all segfaulted before this, and differ in
+how the first query ends, which is what decides whether the list loops at
+all — `@media,` and `@media not,` do not reach the bug because that query
+consumes the comma itself:
+
+  @media),         the query fails on the ')', leaving the comma
+  @media ),,,      several empty iterations in a row
+  @media (color),  the first query is a condition, and succeeds
+
+All three now parse to `not all` (the third keeps its condition, so it
+dumps as `all`).
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/parse/mq.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/parse/mq.c b/src/parse/mq.c
+index 5031e34..94fc90a 100644
+--- a/src/parse/mq.c
++++ b/src/parse/mq.c
+@@ -980,7 +980,7 @@ static css_error mq_parse_media_query(lwc_string **strings,
+ 	token = parserutils_vector_peek(vector, *ctx);
+ 	if (tokenIsChar(token, '(')) {
+ 		is_condition = true;
+-	} else if (token->type == CSS_TOKEN_IDENT &&
++	} else if (token != NULL && token->type == CSS_TOKEN_IDENT &&
+ 			lwc_string_caseless_isequal(token->idata,
+ 				strings[NOT], &match) == lwc_error_ok &&
+ 				match) {
+-- 
+2.43.0
+

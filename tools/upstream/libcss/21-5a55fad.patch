@@ -1,0 +1,44 @@
+From 5a55fada3f8356950498005f5351d9f1e8081031 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Sat, 7 Nov 2026 13:32:44 +0100
+Subject: [PATCH] select: unit: len2device_px rounded the size of a unit, not
+ the length
+
+css_unit_len2device_px() rounded px_per_unit to a whole device pixel
+before multiplying by the length, the same way css_unit_len2css_px()
+did for CSS pixels.  A unit is rarely a whole number of pixels: 1mm is
+3.78px at 96dpi, so `width: 10mm` came out 40px from
+css_computed_width_px(), where it is 37.8.
+
+The product is now exact, and rounding is left to the caller, which
+truncates the length it gets.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/unit.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/src/select/unit.c b/src/select/unit.c
+index 0a6697f..2fafb79 100644
+--- a/src/select/unit.c
++++ b/src/select/unit.c
+@@ -348,12 +348,9 @@ css_fixed css_unit_len2device_px(
+ 
+ 	px_per_unit = css_unit_css2device_px(px_per_unit, ctx->device_dpi);
+ 
+-	/* Ensure we round px_per_unit to the nearest whole number of pixels:
+-	 * the use of FIXTOINT() below will truncate. */
+-	px_per_unit += F_0_5;
+-
+-	/* Calculate total number of pixels */
+-	return FMUL(length, TRUNCATEFIX(px_per_unit));
++	/* Not rounded: a unit is rarely a whole number of device pixels, and
++	 * rounding it first made 10mm 40px at 96dpi, where it is 37.8. */
++	return FMUL(length, px_per_unit);
+ }
+ 
+ /**
+-- 
+2.43.0
+

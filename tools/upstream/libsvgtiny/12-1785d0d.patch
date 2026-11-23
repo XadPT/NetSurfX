@@ -1,0 +1,25 @@
+From 1785d0d1327953c8de29bb257dded10f418d3ef9 Mon Sep 17 00:00:00 2001
+From: Vincent Sanders <vince@kyllikki.org>
+Date: Mon, 23 Feb 2026 20:19:12 +0000
+Subject: [PATCH] Fix polygon parsing error handling leaking a dom string
+ reference
+
+---
+ src/svgtiny.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/svgtiny.c b/src/svgtiny.c
+index 4e3c8f4..61b081a 100644
+--- a/src/svgtiny.c
++++ b/src/svgtiny.c
+@@ -792,6 +792,7 @@ svgtiny_parse_poly(dom_element *poly,
+ 	pointc = dom_string_byte_length(points_str);
+ 	pointv = malloc(sizeof pointv[0] * pointc);
+ 	if (pointv == NULL) {
++		dom_string_unref(points_str);
+ 		svgtiny_cleanup_state_local(&state);
+ 		return svgtiny_OUT_OF_MEMORY;
+ 	}
+-- 
+2.43.0
+

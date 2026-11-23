@@ -1,0 +1,28 @@
+From 703224cbd054eeaf1157b61941108b2eb3efee28 Mon Sep 17 00:00:00 2001
+From: John-Mark Bell <jmb@netsurf-browser.org>
+Date: Tue, 27 Oct 2026 18:56:35 +0000
+Subject: [PATCH] utils: bound copy in realpath fallback
+
+Copy at most PATH_MAX bytes into the output buffer (which must be
+that size if provided, as that's what POSIX says).
+---
+ utils/utils.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/utils/utils.c b/utils/utils.c
+index c647185..d144e4b 100644
+--- a/utils/utils.c
++++ b/utils/utils.c
+@@ -477,7 +477,8 @@ char *realpath(const char *path, char *resolved_path)
+ 		ret=strdup(path);
+ 	} else {
+ 		ret = resolved_path;
+-		strcpy(resolved_path, path);
++		strncpy(resolved_path, path, PATH_MAX-1);
++		resolved_path[PATH_MAX-1] = '\0';
+ 	}
+ 	return ret;
+ }
+-- 
+2.43.0
+

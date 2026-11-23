@@ -1,0 +1,27 @@
+From 69c112055ad36074b431e34b33545694f0600559 Mon Sep 17 00:00:00 2001
+From: Lovell Fuller <github@lovell.info>
+Date: Mon, 16 Nov 2026 09:29:06 +0000
+Subject: [PATCH] Ensure previous frame was allocated correctly before use
+
+---
+ src/gif.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/gif.c b/src/gif.c
+index a7b7ad9..d4440e3 100644
+--- a/src/gif.c
++++ b/src/gif.c
+@@ -336,6 +336,10 @@ static nsgif_error nsgif__recover_frame(
+ 	size_t height = gif->info.height;
+ 	size_t width  = gif->info.width;
+ 
++	if (prev_frame == NULL) {
++		return NSGIF_ERR_OOM;
++	}
++
+ 	memcpy(bitmap, prev_frame, height * width * pixel_bytes);
+ 
+ 	return NSGIF_OK;
+-- 
+2.43.0
+

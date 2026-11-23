@@ -1,0 +1,56 @@
+From 6d1a9ff5d89f1d64dad083cd1823e26a3497dc08 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Tue, 6 Oct 2026 21:03:16 +0200
+Subject: [PATCH] select: set origin and specificity before cascading the
+ inline style
+
+css_select_style() cascades a node's inline style without setting
+state.current_origin or state.current_specificity. Those are assigned only
+while walking a sheet (select_from_sheet(), match_selector_chain()), so
+css__outranks_existing() compared the inline declarations against whatever
+the last selector matched from the last sheet left behind, and the inline
+style won or lost by accident.
+
+A universal selector leaves specificity 0 behind. So given a class (or id)
+rule in one sheet and a `* { box-sizing: border-box }` rule in a later sheet,
+the class rule beats the element's inline style:
+
+  sheet 1:  .box { background-color: #e5e5e5 }
+  sheet 2:  * { box-sizing: border-box }
+  <span class="box" style="background: #333">
+
+renders #e5e5e5. It takes the two rules in separate sheets, the `*`
+sheet last, and at least one declaration in the `*` rule. slashdot.org
+is such a page: its "This Day on Slashdot" comment-count bubbles lose
+their inline background.
+
+CSS Cascade 4 6.4.4 puts the inline style above the author origin's normal
+declarations whatever their specificity, so set CSS_ORIGIN_AUTHOR and
+UINT32_MAX explicitly. Importance is compared first and is unaffected: an
+important rule still beats a normal inline declaration.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/select/select.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/select/select.c b/src/select/select.c
+index faea445..9e4e384 100644
+--- a/src/select/select.c
++++ b/src/select/select.c
+@@ -1399,6 +1399,11 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
+ 			state.computed = state.results->styles[
+ 					CSS_PSEUDO_ELEMENT_NONE];
+ 
++			/* The inline style outranks every author rule of the
++			 * same importance (CSS Cascade 4 6.4.4). */
++			state.current_origin = CSS_ORIGIN_AUTHOR;
++			state.current_specificity = UINT32_MAX;
++
+ 			error = cascade_style(sel->style, &state);
+ 			if (error != CSS_OK)
+ 				goto cleanup;
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+From e6f67957866ffb555e918aecb99d9b1bdeb5731a Mon Sep 17 00:00:00 2001
+From: Michael Drake <tlsa@netsurf-browser.org>
+Date: Sun, 15 Nov 2026 13:42:28 +0000
+Subject: [PATCH] select: unit: Round the length rather than unit in len2px_mq
+
+---
+ src/select/unit.c | 13 +++----------
+ 1 file changed, 3 insertions(+), 10 deletions(-)
+
+diff --git a/src/select/unit.c b/src/select/unit.c
+index d646f84..e6066ad 100644
+--- a/src/select/unit.c
++++ b/src/select/unit.c
+@@ -321,7 +321,7 @@ css_fixed css_unit_len2px_mq(
+ {
+ 	/* In the media query context there is no reference or root element
+ 	 * style, so these are hard-coded to NULL. */
+-	css_fixed px_per_unit = css_unit__len2px(
++	return FROUND(css_unit__len2px(
+ 			ctx->measure,
+ 			NULL,
+ 			NULL,
+@@ -329,16 +329,9 @@ css_fixed css_unit_len2px_mq(
+ 			ctx->font_size_minimum,
+ 			ctx->viewport_height,
+ 			ctx->viewport_width,
+-			F_1,
++			length,
+ 			unit,
+-			ctx->pw);
+-
+-	/* Ensure we round px_per_unit to the nearest whole number of pixels:
+-	 * the use of FIXTOINT() below will truncate. */
+-	px_per_unit += F_0_5;
+-
+-	/* Calculate total number of pixels */
+-	return FMUL(length, TRUNCATEFIX(px_per_unit));
++			ctx->pw));
+ }
+ 
+ /* Exported function, documented in libcss/unit.h. */
+-- 
+2.43.0
+

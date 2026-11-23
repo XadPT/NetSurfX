@@ -79,7 +79,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_download.h"
 #include "xbox_perf.h"
 
-#define NSX_VERSION "0.8.0-test"
+#define NSX_VERSION "0.8.1-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"

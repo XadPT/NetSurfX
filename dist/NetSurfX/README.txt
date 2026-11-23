@@ -1,8 +1,22 @@
-NetSurfX 0.8.0 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.8.1 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.8.1
+  Fixes brought in from the official NetSurf project (newer than the
+  Nintendo Switch port this browser is based on):
+  - CSS: a calc() dividing by zero crashed the browser; two reads past the
+    end of a style sheet's data; vh and vw units were swapped; sizes are
+    now rounded to the nearest pixel; flex shorthand parsed correctly;
+    inline style priority and relative positioning fixes.
+  - GIF: decoder off-by-one, and a crash when the previous frame could not
+    be allocated (low memory).
+  - BMP and SVG: bad files no longer misdecode or leak memory.
+  - https://site:443/ is now the same site as https://site/ (cookies,
+    cache and connections).
+  - A small buffer overrun in the working-folder function.
 
 NEW IN 0.8.0
   Stability

@@ -1,0 +1,49 @@
+From 0c4f51901a152ae551987aabdb7881c4f55cdc08 Mon Sep 17 00:00:00 2001
+From: Cyril Hrubis <metan@ucw.cz>
+Date: Wed, 4 Nov 2026 13:59:16 +0100
+Subject: [PATCH] parse: flex: an omitted flex-grow is 1
+
+The flex shorthand set an omitted flex-grow to 0 unless the value was
+`auto`, so `flex: 300px` came out `0 1 300px` where Flexbox 7.1.1 makes
+it `1 1 300px`: "When omitted from the flex shorthand, its specified
+value is 1." This makes the code identical to flex shrink that also
+defaults to 1 and was correct before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Cyril Hrubis <metan@ucw.cz>
+---
+ src/parse/properties/flex.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/src/parse/properties/flex.c b/src/parse/properties/flex.c
+index 68c309c..b7547a9 100644
+--- a/src/parse/properties/flex.c
++++ b/src/parse/properties/flex.c
+@@ -42,7 +42,6 @@ css_error css__parse_flex(css_language *c,
+ 	css_style *grow_style;
+ 	css_style *shrink_style;
+ 	css_style *basis_style;
+-	bool short_auto = false;
+ 	bool short_none = false;
+ 	enum flag_value flag_value;
+ 	bool match;
+@@ -104,7 +103,6 @@ css_error css__parse_flex(css_language *c,
+ 			token->idata, c->strings[AUTO],
+ 			&match) == lwc_error_ok && match)) {
+ 		/* Handle shorthand auto, equivalent of flex: 1 1 auto; */
+-		short_auto = true;
+ 		parserutils_vector_iterate(vector, ctx);
+ 
+ 	} else do {
+@@ -149,7 +147,7 @@ css_error css__parse_flex(css_language *c,
+ 		if (error != CSS_OK)
+ 			goto css__parse_flex_cleanup;
+ 
+-		css_fixed grow_num = short_auto ? INTTOFIX(1) : 0;
++		css_fixed grow_num = short_none ? 0 : INTTOFIX(1);
+ 		error = css__stylesheet_style_append(grow_style, grow_num);
+ 		if (error != CSS_OK)
+ 			goto css__parse_flex_cleanup;
+-- 
+2.43.0
+

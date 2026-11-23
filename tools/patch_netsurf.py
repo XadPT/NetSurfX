@@ -124,4 +124,35 @@ edit('netsurf/content/textsearch.c',
      '\tfree_matches(textsearch);\n\tfree(textsearch->found); /* NSX searchhead */\n\tfree(textsearch);\n',
      'NSX searchhead')
 
+# 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
+#     mirrored on github.com/netsurf-browser) that are newer than the
+#     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied
+#     in file-name order; each is skipped when already present. Highlights:
+#     libcss 113dc45 calc() division by zero (SIGFPE crash), 499f1c4/006ffc4
+#     reads past the token vector, cbbeaaf vh/vw swapped, rounding fixes;
+#     libnsgif 2255b2f LZW off-by-one, 69c1120 missing previous frame;
+#     libnsbmp RLE padding and odd widths; libsvgtiny leaks and error paths;
+#     netsurf 597329f https :443 default port, 703224c bounded realpath.
+import subprocess, glob
+UP = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upstream')
+def _order(pf):
+    b = os.path.basename(pf)
+    n = b.split('-', 1)[0]
+    return (int(n) if n.isdigit() else 0, b)
+for tree in sorted(os.listdir(UP)):
+    tdir = os.path.join(ROOT, tree)
+    stamp = os.path.join(tdir, '.nsx-upstream-applied')
+    applied = set(open(stamp).read().split()) if os.path.exists(stamp) else set()
+    for pf in sorted(glob.glob(os.path.join(UP, tree, '*.patch')), key=_order):
+        name = os.path.basename(pf)
+        if name in applied:
+            continue
+        r = subprocess.run(['git', 'apply', pf], cwd=tdir, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit('upstream patch %s/%s failed: %s' % (tree, name, r.stderr))
+        applied.add(name)
+        with open(stamp, 'a') as fh:
+            fh.write(name + '\n')
+        done.append('upstream %s/%s' % (tree, name))
+
 print('alterados:', ', '.join(sorted(set(done))) or 'nada (ja aplicado)')
