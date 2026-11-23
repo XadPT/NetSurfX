@@ -358,3 +358,186 @@ void F(qsort)(void *vbase, size_t n, size_t size, int (*cmp)(const void *, const
 		qs_sift(base, 0, end, size, cmp);
 	}
 }
+
+/* ================================================================ math */
+
+/*
+ * pdclib on nxdk leaves these as assert(0) stubs (nxdk's assert halts the
+ * console). QuickJS's Math object needs them. The formulas below are the
+ * standard accurate ones (Kahan's tricks for log1p/expm1, exact results
+ * for powers of two in log2, a Newton step after pow for cbrt).
+ */
+#include <math.h>
+#include <float.h>
+#undef acosh
+#undef asinh
+#undef atanh
+#undef cbrt
+#undef exp2
+#undef expm1
+#undef log1p
+#undef log2
+#undef logb
+#undef fdim
+#undef fma
+#undef nextafter
+#undef scalbn
+#undef scalbln
+#undef nan
+#undef ilogb
+#undef lrint
+#undef lround
+
+#define NSX_LN2 0.693147180559945309417232121458176568
+
+static int nsx_isnan(double x) { return x != x; }
+static int nsx_isinf(double x) { return x == x && x - x != x - x; }
+
+double FS(log1p)(double x)
+{
+	volatile double u = 1.0 + x;
+	if (nsx_isnan(x) || x == INFINITY) return x;
+	if (x == -1.0) return -INFINITY;
+	if (x < -1.0) return NAN;
+	if (u == 1.0) return x;              /* also keeps the sign of -0 */
+	return log(u) * x / (u - 1.0);
+}
+
+double FS(expm1)(double x)
+{
+	volatile double u;
+	if (nsx_isnan(x) || x == INFINITY) return x;
+	if (x == -INFINITY) return -1.0;
+	if (fabs(x) < 1e-5)                  /* series: x + x^2/2 + x^3/6 */
+		return x + x * x * 0.5 + x * x * x / 6.0;
+	u = exp(x);
+	if (u == INFINITY) return u;
+	if (u == 1.0) return x;
+	if (u - 1.0 == -1.0) return -1.0;
+	return (u - 1.0) * x / log(u);
+}
+
+double FS(log2)(double x)
+{
+	int e;
+	double m;
+	if (nsx_isnan(x) || x == INFINITY) return x;
+	if (x == 0.0) return -INFINITY;
+	if (x < 0.0) return NAN;
+	m = frexp(x, &e);                    /* x = m * 2^e, m in [0.5, 1) */
+	if (m == 0.5) return (double)(e - 1); /* exact for powers of two */
+	if (m < 0.70710678118654752440) {    /* keep m in [sqrt(1/2), sqrt(2)) */
+		m *= 2.0;
+		e--;
+	}
+	/* m - 1 is exact here, so no cancellation near x = 1 */
+	return (double)e + FS(log1p)(m - 1.0) / NSX_LN2;
+}
+
+double FS(cbrt)(double x)
+{
+	double y, a;
+	if (x == 0.0 || nsx_isnan(x) || nsx_isinf(x)) return x;
+	a = fabs(x);
+	y = pow(a, 1.0 / 3.0);
+	y = y - (y * y * y - a) / (3.0 * y * y); /* one Newton step */
+	return x < 0 ? -y : y;
+}
+
+double FS(exp2)(double x)
+{
+	if (nsx_isnan(x)) return x;
+	if (x == floor(x) && fabs(x) < 1024.0) return ldexp(1.0, (int)x);
+	return pow(2.0, x);
+}
+
+double FS(acosh)(double x)
+{
+	if (nsx_isnan(x)) return x;
+	if (x < 1.0) return NAN;
+	if (x > 1e8) return log(x) + NSX_LN2;
+	return log(x + sqrt(x * x - 1.0));
+}
+
+double FS(asinh)(double x)
+{
+	double a = fabs(x), r;
+	if (x == 0.0 || nsx_isnan(x) || nsx_isinf(x)) return x;
+	if (a > 1e8) r = log(a) + NSX_LN2;
+	else r = FS(log1p)(a + a * a / (1.0 + sqrt(1.0 + a * a)));
+	return x < 0 ? -r : r;
+}
+
+double FS(atanh)(double x)
+{
+	double a = fabs(x), r;
+	if (x == 0.0 || nsx_isnan(x)) return x;
+	if (a > 1.0) return NAN;
+	if (a == 1.0) return x > 0 ? INFINITY : -INFINITY;
+	r = 0.5 * FS(log1p)(2.0 * a / (1.0 - a));
+	return x < 0 ? -r : r;
+}
+
+double FS(logb)(double x)
+{
+	int e;
+	if (nsx_isnan(x)) return x;
+	if (nsx_isinf(x)) return INFINITY;
+	if (x == 0.0) return -INFINITY;
+	frexp(x, &e);
+	return (double)(e - 1);
+}
+
+int FS(ilogb)(double x)
+{
+	int e;
+	if (x == 0.0) return INT_MIN;
+	if (nsx_isnan(x)) return INT_MIN;
+	if (nsx_isinf(x)) return INT_MAX;
+	frexp(x, &e);
+	return e - 1;
+}
+
+double FS(fdim)(double x, double y)
+{
+	if (nsx_isnan(x) || nsx_isnan(y)) return NAN;
+	return x > y ? x - y : 0.0;
+}
+
+double FS(fma)(double x, double y, double z)
+{
+	return x * y + z;                    /* not fused: no FMA on a P3 */
+}
+
+double FS(scalbn)(double x, int n) { return ldexp(x, n); }
+
+double FS(scalbln)(double x, long n)
+{
+	if (n > INT_MAX) n = INT_MAX;
+	if (n < INT_MIN) n = INT_MIN;
+	return ldexp(x, (int)n);
+}
+
+double FS(nan)(const char *tag) { (void)tag; return NAN; }
+
+double FS(nextafter)(double x, double y)
+{
+	union { double d; uint64_t u; } v;
+	if (nsx_isnan(x) || nsx_isnan(y)) return x + y;
+	if (x == y) return y;
+	if (x == 0.0) {
+		v.u = 1;                     /* smallest subnormal */
+		return y > 0 ? v.d : -v.d;
+	}
+	v.d = x;
+	if ((x < y) == (x > 0)) v.u++;
+	else v.u--;
+	return v.d;
+}
+
+long FS(lrint)(double x) { return (long)rint(x); }
+
+long FS(lround)(double x)
+{
+	return (long)(x < 0 ? -floor(-x + 0.5) : floor(x + 0.5));
+}

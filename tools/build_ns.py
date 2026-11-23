@@ -6,6 +6,8 @@ PRJ  = '/home/claude/netsurfx'
 NX   = '/home/claude/nxdk'
 OUT  = PRJ + '/nsbuild'
 os.makedirs(OUT + '/obj', exist_ok=True)
+# the JavaScript runtime shim is compiled in as a C array
+subprocess.run([sys.executable, PRJ + '/tools/gen_runtime_js.py', NS, PRJ + '/gen/quickjs/runtime.js.inc'], check=True)
 
 srcs = [l.strip() for l in open(PRJ + '/tools/ns_sources.txt') if l.strip() and not l.startswith('#')]
 

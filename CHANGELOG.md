@@ -2,6 +2,14 @@
 
 All dates are 2026.
 
+## v0.9.0 (test build) — 23 Nov — JavaScript (experimental)
+- QuickJS-ng v0.17.0 built for nxdk (`tools/build_quickjs.sh`, shims in `qjsshim/`) with the netsurf-switch QuickJS backend and its hand-written DOM bindings and `runtime.js` web-platform shim (embedded by `tools/gen_runtime_js.py`). Off by default; *Settings → JavaScript*.
+- Limits (patch 17): `xbox_js_memory` MB per runtime (default 6, clamped 2–24), 384 KB JS stack, GC threshold 512 KB, `script_timeout` 5 s. A page's script context costs about 1 MB (patch 21 logs `[PERF] JS context ready`).
+- pdclib leaves `acosh asinh atanh cbrt exp2 expm1 log1p log2 logb fdim fma nextafter scalbn scalbln nan ilogb lrint lround` as `assert(0)` stubs (which halt the console); real implementations in `src/xbox_libc.c` (≤ 2 ulp against glibc, exact for powers of two in `log2`), redirected by `xbox_compat.h`.
+- `tools/audit_stubs.py`: finds every `assert(0)` stub in nxdk's pdclib/xboxrt/winapi sources and fails if the linked program calls one. Clean for this build.
+- NetSurf fixes found with JavaScript on: form-less controls leaked on every box-tree rebuild after DOM changes (patch 19); `write_entries`/`write_blocks` leaked path strings (patch 18); form-less `<button>` showed "form can not be submitted" (patch 20).
+- Host tests: `run_js.sh` (DOM/Math/JSON/RegExp/timers, endless loop stopped after 5 s, memory hog stopped by the limit, inline and `addEventListener` click handlers) clean under ASan, TSan and the our-libc build; full suites clean.
+
 ## v0.8.4 (test build) — 23 Nov
 - Memory guard (`fb_memory_guard`): below 12 MB free `llcache_clean(true)` every 5 s; below 7 MB the loading page is stopped with an on-screen message. The full CNN page had taken a 64 MB console to 7.4 MB. Testable on the PC with `NSX_FAKE_FREE_KB`.
 - Local history window: the page that was still loading painted over it (fbtk has no occlusion); the browser widget now skips drawing while it is shown, closing it (click or any controller command) repaints the page, and the graph is plotted at the widget position minus the scroll offset.

@@ -76,7 +76,7 @@ Outline:
 ## Known issues
 
 - **Hard freeze after a Google search, with no log written** (v0.7.2). The likely cause, a null-pointer write in the network driver's receive DPC when memory ran out, is fixed in v0.8.0, and Google searches now go to DuckDuckGo HTML (Google Search requires JavaScript). Awaiting confirmation on hardware; v0.8.0 also adds crash/hang capture that survives a power cycle.
-- No JavaScript (planned: QuickJS, off by default).
+- JavaScript (QuickJS-ng) is experimental and off by default (v0.9.0); big script-heavy sites remain out of reach on 64 MB.
 - No video or audio playback.
 - 720p/1080i depend on the console region and AV pack; PAL consoles may be limited to 480 lines.
 

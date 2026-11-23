@@ -89,7 +89,7 @@ if total_fails:
 libs = [PFX + '/lib/' + l for l in ('libsvgtiny.a', 'libdom.a', 'libhubbub.a', 'libcss.a', 'libparserutils.a', 'libwapcaplet.a',
         'libnsbmp.a', 'libnsgif.a', 'libutf8proc.a', 'libnsutils.a')]
 cmd = ['gcc', '-g', '-o', HT + '/nsx-host'] + ns_objs + nsfb_objs + mb_objs + plat_objs + libs + \
-      ['-Wl,--wrap=open', '-Wl,--wrap=realpath', '-lexpat', '/tmp/webpplain/libwebp_nsx.a', '-lfreetype', '-lpng16', '-lz', '-lpthread', '-lm']
+      ['-Wl,--wrap=open', '-Wl,--wrap=realpath', '/tmp/ns2prefix/lib/libquickjs.a', '-lexpat', '/tmp/webpplain/libwebp_nsx.a', '-lfreetype', '-lpng16', '-lz', '-lpthread', '-lm']
 rc, err = run(cmd)
 if rc:
     print('\n'.join(sorted(set(l for l in err.splitlines() if 'undefined' in l)))[:6000])

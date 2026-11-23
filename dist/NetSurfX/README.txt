@@ -1,8 +1,28 @@
-NetSurfX 0.8.4 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.9.0 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.9.0 - JAVASCRIPT (EXPERIMENTAL)
+  - JavaScript engine (QuickJS-ng) with the page bindings of the NetSurf
+    Nintendo Switch port: document changes, click and form events,
+    timers, JSON, regular expressions and modern JavaScript syntax.
+  - OFF by default. Turn it on in Start > Settings > JavaScript; the
+    current page reloads.
+  - Safety limits: each page's scripts may use at most 6 MB of memory
+    (data\Choices: xbox_js_memory) and a script that runs for more than
+    5 seconds is stopped; the page carries on without it.
+  - Setting up scripts costs each page about 1 MB and a fraction of a
+    second. Simple sites (menus, tabs, forms, content loaded by script)
+    gain the most; big sites (YouTube, social networks, Google) remain
+    too heavy for this console.
+  - Fixed: a <button> outside a form no longer shows "form can not be
+    submitted"; two small memory leaks in the disk cache and one in
+    pages that scripts change.
+  - Maths functions missing from the Xbox C library (cbrt, log2, expm1,
+    log1p, the hyperbolic functions and others) added: they would have
+    frozen the console.
 
 NEW IN 0.8.4
   - Memory guard: below 12 MB free the unused cache is dropped; below 7 MB
@@ -142,14 +162,16 @@ DIAGNOSTICS (test builds)
   screen, if there was a message) to the developer.
 
 LIMITS
-  No JavaScript, so very dynamic modern sites (YouTube, social networks)
-  do not work. Simple sites, text-only news, Wikipedia, forums and
-  DuckDuckGo work well (see the home page).
+  JavaScript is experimental and off by default, and very dynamic modern
+  sites (YouTube, social networks, Google) do not work even with it.
+  Simple sites, text-only news, Wikipedia, forums and DuckDuckGo work
+  well (see the home page).
   If the Xbox clock is far off, some HTTPS sites may show a certificate
   warning (you can continue with "Proceed").
   No video or audio.
 
 LICENCES
   NetSurf (GPLv2), mbedTLS (Apache 2.0), expat (MIT), libwebp (BSD),
-  stb_sprintf (public domain), nxdk (MIT), DejaVu fonts. See "licenses".
+  QuickJS-ng (MIT), stb_sprintf (public domain), nxdk (MIT), DejaVu
+  fonts. See "licenses".
   NetSurfX port by XadPT.

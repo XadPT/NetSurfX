@@ -22,6 +22,6 @@ LDFLAGS += -map:nsx.map -stack:1048576 $(NSOBJS) \
 	$(NSLIBS)/libutf8proc.lib $(NSLIBS)/libnsutils.lib \
 	$(NSLIBS)/libdom.lib $(NSLIBS)/libhubbub.lib $(NSLIBS)/libcss.lib \
 	$(NSLIBS)/libparserutils.lib $(NSLIBS)/libwapcaplet.lib \
-	$(NSLIBS)/libmbedtls.lib \
+	$(NSLIBS)/libmbedtls.lib $(NSLIBS)/libquickjs.lib \
 	$(NXDK_DIR)/lib/libpng.lib $(NXDK_DIR)/lib/libjpeg.lib $(NXDK_DIR)/lib/libzlib.lib \
 	$(NXDK_DIR)/lib/libfreetype.lib

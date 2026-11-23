@@ -82,7 +82,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "content/llcache.h"
 #include "xbox_splash.h"
 
-#define NSX_VERSION "0.8.4-test"
+#define NSX_VERSION "0.9.0-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -571,6 +571,10 @@ static nserror set_defaults(struct nsoption_s *defaults)
 
 	/* Xbox: 64 MB de RAM e um CPU de 733 MHz */
 	nsoption_set_int(memory_cache_size, auto_memory_cache_size());
+	/* JavaScript off by default (heavy on a 733 MHz, 64 MB console);
+	 * Settings turns it on. Scripts get 5 s before they are stopped. */
+	nsoption_set_bool(enable_javascript, false);
+	nsoption_set_int(script_timeout, 5);
 	nsoption_set_int(max_fetchers, 6);
 	nsoption_set_int(max_fetchers_per_host, 3);
 	/* cache em disco (D:\cache, ao lado do default.xbe): 64 MB chegam e
@@ -1181,7 +1185,7 @@ static void fb_save_choices(void)
 
 static void fb_settings_menu(struct gui_window *gw)
 {
-	enum { S_SEARCH, S_GOOGLE, S_UA, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
+	enum { S_SEARCH, S_GOOGLE, S_UA, S_JS, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
 	char lbl[S_COUNT][160];
 	const char *labels[S_COUNT];
 	int sel = 0, dir;
@@ -1205,6 +1209,8 @@ static void fb_settings_menu(struct gui_window *gw)
 		snprintf(lbl[S_DPAD], sizeof lbl[0], "D-pad:  %s", nsoption_bool(xbox_dpad_links) ? "jump between links" : "scroll the page");
 		snprintf(lbl[S_STATS], sizeof lbl[0], "On-screen statistics:  %s", onoff(nsoption_bool(xbox_show_stats)));
 		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Download folder:  %s", nsoption_charp(xbox_download_dir));
+		snprintf(lbl[S_JS], sizeof lbl[0], "JavaScript:  %s", nsoption_bool(enable_javascript) ?
+			 "On (experimental)" : "Off");
 		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Show images:  %s", onoff(nsoption_bool(foreground_images)));
 		snprintf(lbl[S_ADS], sizeof lbl[0], "Block ads:  %s", onoff(nsoption_bool(block_advertisements)));
 		snprintf(lbl[S_HD], sizeof lbl[0], "720p (HD) video:  %s  (after restart)", onoff(nsoption_bool(xbox_hd)));
@@ -1259,6 +1265,9 @@ static void fb_settings_menu(struct gui_window *gw)
 			nsoption_set_charp(xbox_download_dir, strdup(dirs[at]));
 			break;
 		}
+		case S_JS:
+			nsoption_set_bool(enable_javascript, !nsoption_bool(enable_javascript));
+			break;
 		case S_IMAGES: {
 			bool v = !nsoption_bool(foreground_images);
 			nsoption_set_bool(foreground_images, v);

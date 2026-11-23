@@ -66,7 +66,12 @@ content/handlers/image/webp.c
 content/handlers/image/png.c
 content/handlers/image/svg.c
 content/handlers/javascript/fetcher.c
-content/handlers/javascript/none/none.c
+content/handlers/javascript/content.c
+content/handlers/javascript/quickjs/quickjs.c
+content/handlers/javascript/quickjs/qjs_dom.c
+content/handlers/javascript/quickjs/qjs_native.c
+content/handlers/javascript/quickjs/qjs_module.c
+content/handlers/javascript/quickjs/qjs_canvas.c
 content/handlers/text/textplain.c
 content/hlcache.c
 content/llcache.c

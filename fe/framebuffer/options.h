@@ -61,6 +61,8 @@ NSOPTION_INTEGER(xbox_ua_mode, 0)
 NSOPTION_STRING(xbox_download_dir, "E:\\Downloads")
 /* Google searches go to DuckDuckGo HTML (Google Search needs JavaScript) */
 NSOPTION_BOOL(xbox_google_redirect, true)
+/* memory each page's JavaScript may use (MB) */
+NSOPTION_INTEGER(xbox_js_memory, 6)
 
 /***** font options *****/
 

@@ -90,4 +90,43 @@ long long nsx_llroundf(float x);
 #define lroundf nsx_lroundf
 #define llroundf nsx_llroundf
 
+/* More pdclib math functions are "assert(0)" stubs (needed by QuickJS):
+ * real versions in xbox_libc.c. */
+double nsx_acosh(double x);
+double nsx_asinh(double x);
+double nsx_atanh(double x);
+double nsx_cbrt(double x);
+double nsx_exp2(double x);
+double nsx_expm1(double x);
+double nsx_log1p(double x);
+double nsx_log2(double x);
+double nsx_logb(double x);
+double nsx_fdim(double x, double y);
+double nsx_fma(double x, double y, double z);
+double nsx_nextafter(double x, double y);
+double nsx_scalbn(double x, int n);
+double nsx_scalbln(double x, long n);
+double nsx_nan(const char *tag);
+int nsx_ilogb(double x);
+long nsx_lrint(double x);
+long nsx_lround(double x);
+#define acosh nsx_acosh
+#define asinh nsx_asinh
+#define atanh nsx_atanh
+#define cbrt nsx_cbrt
+#define exp2 nsx_exp2
+#define expm1 nsx_expm1
+#define log1p nsx_log1p
+#define log2 nsx_log2
+#define logb nsx_logb
+#define fdim nsx_fdim
+#define fma nsx_fma
+#define nextafter nsx_nextafter
+#define scalbn nsx_scalbn
+#define scalbln nsx_scalbln
+#define nan nsx_nan
+#define ilogb nsx_ilogb
+#define lrint nsx_lrint
+#define lround nsx_lround
+
 #endif

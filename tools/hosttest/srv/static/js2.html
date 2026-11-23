@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><body>
+<button id="b1" onclick="console.log('inline-click'); document.getElementById('r').textContent='inline ok'">Inline</button>
+<button id="b2">Listener</button>
+<p id="r">nothing yet</p>
+<script>
+console.log('script start');
+document.getElementById('b2').addEventListener('click', function(){ console.log('listener-click'); document.getElementById('r').textContent='listener ok'; });
+document.getElementById('b1').addEventListener('click', function(){ console.log('b1 listener-click'); });
+console.log('script end');
+</script></body></html>

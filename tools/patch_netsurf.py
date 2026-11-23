@@ -150,6 +150,83 @@ edit('netsurf/utils/log.c',
      '\tverbose_log = (logfile != NULL); /* NSX logfinal */\n\tif (logfile != NULL && logfile != stderr) {\n\t\tfclose(logfile);\n',
      'NSX logfinal')
 
+# 17. quickjs.c (netsurf-switch JS glue): the Switch allows each JS runtime
+#     64 MB; on a 64 MB Xbox the limit comes from the xbox_js_memory option
+#     (MB, default 6). The JS stack is capped well inside the 1 MB main
+#     thread stack, and the GC runs more often to keep the heap small.
+edit('netsurf/content/handlers/javascript/quickjs/quickjs.c',
+     '\tJS_SetMemoryLimit(heap->rt, QJS_MEMORY_LIMIT);\n',
+     '#if defined(XBOX) || defined(WITH_XBOXFETCH) /* NSX jslimits */\n'
+     '\t{\n'
+     '\t\tint mb = nsoption_int(xbox_js_memory);\n'
+     '\t\tif (mb < 2) mb = 2;\n'
+     '\t\tif (mb > 24) mb = 24;\n'
+     '\t\tJS_SetMemoryLimit(heap->rt, (size_t)mb * 1024 * 1024);\n'
+     '\t\tJS_SetMaxStackSize(heap->rt, 384 * 1024);\n'
+     '\t\tJS_SetGCThreshold(heap->rt, 512 * 1024);\n'
+     '\t}\n'
+     '#else\n'
+     '\tJS_SetMemoryLimit(heap->rt, QJS_MEMORY_LIMIT);\n'
+     '#endif\n',
+     'NSX jslimits')
+
+# 18. fs_backing_store.c write_blocks(): the success path leaked both path
+#     strings (found by ASan on exit).
+edit('netsurf/content/fs_backing_store.c',
+     '\tif (rename(tname, fname) != 0) {\n\t\tunlink(tname);\n\t\tfree(tname);\n\t\tfree(fname);\n\t\treturn NSERROR_SAVE_FAILED;\n\t}\n\n\treturn NSERROR_OK;\n}\n',
+     '\tif (rename(tname, fname) != 0) {\n\t\tunlink(tname);\n\t\tfree(tname);\n\t\tfree(fname);\n\t\treturn NSERROR_SAVE_FAILED;\n\t}\n\n\tfree(tname); /* NSX blockleak */\n\tfree(fname);\n\treturn NSERROR_OK;\n}\n',
+     'NSX blockleak')
+
+edit('netsurf/content/fs_backing_store.c',
+     '\tNSLOG(netsurf, INFO, "Wrote out %"PRIsizet" entries", weistate.written);\n',
+     '\tNSLOG(netsurf, INFO, "Wrote out %"PRIsizet" entries", weistate.written);\n\tfree(tname); /* NSX entryleak */\n\tfree(fname);\n',
+     'NSX entryleak')
+
+# 19. rebuild.c (netsurf-switch, box tree rebuilt after script DOM changes):
+#     controls of form-less inputs/buttons belong only to their box; the old
+#     tree was freed with talloc without them, leaking one control per such
+#     element on every rebuild (found by ASan with JavaScript on). Controls
+#     in a form are kept (the form owns them and the new tree reuses them).
+edit('netsurf/content/handlers/html/rebuild.c',
+     '\t\tif (box->list_marker != NULL)\n\t\t\thtml_rebuild_forget_boxes(box->list_marker);\n',
+     '\t\tif (box->gadget != NULL && box->gadget->form == NULL &&\n'
+     '\t\t    box->gadget->box == box) { /* NSX rebuildleak */\n'
+     '\t\t\tform_free_control(box->gadget);\n'
+     '\t\t\tbox->gadget = NULL;\n'
+     '\t\t}\n'
+     '\t\tif (box->list_marker != NULL)\n\t\t\thtml_rebuild_forget_boxes(box->list_marker);\n',
+     'NSX rebuildleak')
+edit('netsurf/content/handlers/html/rebuild.c',
+     '#include "html/rebuild.h"\n',
+     '#include "html/rebuild.h"\n#include "html/form_internal.h" /* NSX rebuildleak inc */\n',
+     'NSX rebuildleak inc')
+
+# 20. interaction.c: a <button> outside any form (normal on pages that use
+#     it with JavaScript) showed "Warning: form can not be submitted"
+#     whenever the pointer passed over it. Browsers show nothing; keep the
+#     hand pointer instead.
+edit('netsurf/content/handlers/html/interaction.c',
+     '\t\t} else {\n\t\t\tmas->result.status = messages_get("FormBadSubmit");\n\t\t}\n',
+     '\t\t} else { /* NSX formless */\n\t\t\tmas->result.pointer = get_pointer_shape(mas->gadget.box,\n\t\t\t\t\t\t\t\tfalse);\n\t\t}\n',
+     'NSX formless')
+
+# 21. quickjs.c: log what setting up a page's script context costs (the
+#     netsurf-switch runtime.js shim is ~130 KB of JavaScript run per page)
+edit('netsurf/content/handlers/javascript/quickjs/quickjs.c',
+     '\tqjs_setup_console(thread->ctx);\n\tqjs_dom_setup(thread);\n',
+     '\t{ /* NSX jscost */\n'
+     '\t\tuint64_t t0 = 0, t1 = 0;\n'
+     '\t\tJSMemoryUsage mu;\n'
+     '\t\tnsu_getmonotonic_ms(&t0);\n'
+     '\t\tqjs_setup_console(thread->ctx);\n'
+     '\t\tqjs_dom_setup(thread);\n'
+     '\t\tnsu_getmonotonic_ms(&t1);\n'
+     '\t\tJS_ComputeMemoryUsage(heap->rt, &mu);\n'
+     '\t\tNSLOG(netsurf, INFO, "[PERF] JS context ready: %u ms, runtime %u KB",\n'
+     '\t\t      (unsigned)(t1 - t0), (unsigned)(mu.malloc_size / 1024));\n'
+     '\t}\n',
+     'NSX jscost')
+
 # 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
 #     mirrored on github.com/netsurf-browser) that are newer than the
 #     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied

@@ -1,0 +1,11 @@
+3000 mouse -127,-127 0
+3050 mouse -127,-127 0
+3100 mouse -127,-127 0
+3150 mouse -127,-127 0
+3200 mouse -127,-127 0
+3300 mouse 22,26 0
+3500 shot JD0.png
+3600 mouse 0,0 1
+3650 mouse 0,0 0
+5500 shot JD1.png
+5700 quit
