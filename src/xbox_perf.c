@@ -28,6 +28,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#if !defined(XBOX) && defined(__GLIBC__)
+#include <malloc.h>
+#endif
 #include <windows.h>
 
 #include "utils/log.h"
@@ -105,6 +108,11 @@ static void heap_stats(uint32_t *used_kb, uint32_t *foot_kb)
 	struct nsx_mallinfo mi = dlmallinfo();
 	*used_kb = (uint32_t)(mi.uordblks / 1024);
 	*foot_kb = (uint32_t)(dlmalloc_footprint() / 1024);
+#elif defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)
+	/* PC test build: glibc's figures, for leak-over-time tests */
+	struct mallinfo2 mi = mallinfo2();
+	*used_kb = (uint32_t)(mi.uordblks / 1024);
+	*foot_kb = (uint32_t)((mi.arena + mi.hblkhd) / 1024);
 #else
 	*used_kb = *foot_kb = 0;
 #endif

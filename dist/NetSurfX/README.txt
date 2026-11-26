@@ -1,8 +1,18 @@
-NetSurfX 0.9.2 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.9.3 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.9.3
+  - Pages you have left are now freed within 2 seconds (it used to take
+    up to 20). Clicking quickly through a heavy site kept several old
+    pages in memory at once.
+  - JavaScript: memory used by the scripts of pages you have left is now
+    reclaimed. Before, after 4 or 5 pages with scripts the JavaScript
+    memory filled up, scripts failed with "out of memory" and pages got
+    slow. On the PC test: before, 44 pages in 2.5 minutes and scripts
+    failing; now 135 pages, all scripts working, memory steady.
 
 NEW IN 0.9.2
   - Fix: after heavy pages the free memory shown stayed very low (e.g.

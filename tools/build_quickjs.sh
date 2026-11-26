@@ -23,10 +23,17 @@ CFLAGS="-O2 -std=gnu11 -D_GNU_SOURCE -DCONFIG_VERSION=\"$QJS_TAG\" -DXBOX \
  -include $PRJ/qjsshim/qjs_xbox.h -Wno-everything \
  -Werror=implicit-function-declaration -Werror=int-conversion"
 
+# quickjs.c with the NetSurfX change (see tools/qjs_nsx_patch.py): the GC
+# threshold never goes past the memory limit, so garbage is collected before
+# a page runs out of JavaScript memory.
+python3 "$PRJ/tools/qjs_nsx_patch.py" "$SRC/quickjs.c" "$OBJ/quickjs_nsx.c"
+
 OBJS=""
 for f in quickjs.c libregexp.c libunicode.c dtoa.c; do
 	o="$OBJ/${f%.c}.obj"
-	eval nxdk-cc $CFLAGS -c "$SRC/$f" -o "$o"
+	src="$SRC/$f"
+	[ "$f" = quickjs.c ] && src="$OBJ/quickjs_nsx.c"
+	eval nxdk-cc $CFLAGS -I"$SRC" -c "$src" -o "$o"
 	OBJS="$OBJS $o"
 done
 rm -f "$PRJ/nslibs/lib/libquickjs.lib"

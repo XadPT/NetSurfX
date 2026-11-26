@@ -396,6 +396,29 @@ edit('netsurf/content/fetchers/resource.c',
 ''',
      'NSX darkres')
 
+# 26. Memory of pages already left.
+#     quickjs.c: a page's JavaScript objects often form cycles (closures that
+#     hold DOM nodes, window.x = window), which only a GC frees; the window's
+#     runtime is shared by every page, so collect when a page's context goes.
+#     netsurf.c: pages that are no longer shown (DOM, layout, JavaScript) were
+#     freed by a cache sweep every 20 s; a few quick clicks on a heavy site
+#     kept several dead pages in a 64 MB console. The sweep now runs every 2 s
+#     (it only walks the list of pages; the data cache is not affected).
+edit('netsurf/content/handlers/javascript/quickjs/quickjs.c',
+     '\tJS_FreeContext(thread->ctx);\n\tfree(thread);\n',
+     '\tJS_FreeContext(thread->ctx);\n\tfree(thread);\n'
+     '\tif (heap->nthreads > 1 || !heap->dying)\n'
+     '\t\tJS_RunGC(heap->rt); /* NSX gcleave: the page\'s cycles */\n',
+     'NSX gcleave')
+edit('netsurf/desktop/netsurf.c',
+     '#define HL_CACHE_CLEAN_TIME (2 * IMAGE_CACHE_CLEAN_TIME)\n',
+     '#ifdef WITH_XBOXFETCH /* NSX hlclean: pages left behind go within 2 s */\n'
+     '#define HL_CACHE_CLEAN_TIME (2 * 1000)\n'
+     '#else\n'
+     '#define HL_CACHE_CLEAN_TIME (2 * IMAGE_CACHE_CLEAN_TIME)\n'
+     '#endif\n',
+     'NSX hlclean')
+
 # 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
 #     mirrored on github.com/netsurf-browser) that are newer than the
 #     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied

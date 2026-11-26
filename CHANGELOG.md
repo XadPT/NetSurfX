@@ -2,6 +2,12 @@
 
 All dates are 2026.
 
+## v0.9.3 (test build) — 26 Nov
+Memory audit after the console ran out of memory on Wikipedia with JavaScript on. New PC test: `leak0..7.html` (250 paragraphs, a 120-row table, 400 script-made elements with closures and a self-referencing `window` object) follow each other by meta refresh for 150 s; heap figures from glibc `mallinfo2` on the PC build.
+- QuickJS GC point beyond the memory limit (`tools/qjs_nsx_patch.py`, applied by `build_quickjs.sh`): after each GC the next one was set at 1.5× the memory in use, so at 4.5 MB of a 6 MB limit no GC could happen before "out of memory", while the scripts of pages already left waited as garbage. The point is now halfway between use and limit. Patch 26 also runs a GC when a page's context is freed (the window's runtime is shared by all its pages).
+- Pages no longer shown (DOM, layout, script context) were destroyed by an hlcache sweep every 20 s; now every 2 s (patch 26).
+- PC result, JavaScript on: before, 44 pages in 150 s, only 7 script contexts created, "out of memory" errors, heap rising to 91 MB; after, 135 pages, 135 contexts, no errors, heap 18–26 MB. JavaScript off: heap peaks 86 MB → 16 MB. ASan/TSan/our-libc suites clean, and the leak run is clean under ASan and TSan.
+
 ## v0.9.2 (test build) — 26 Nov
 - Memory guard used only the kernel's free pages (`MmQueryStatistics`). pdclib's dlmalloc (Win32 mmap emulation) keeps freed memory in its segments and rarely returns it, so after Wikipedia with JavaScript the console showed 2.5 MB free on the home page and every navigation was stopped as "Low memory". When the kernel figure is below 12 MB, the guard and the status bar now count `nsx_mem_avail_kb()` = free pages + (heap footprint − heap in use), and the purge also calls `dlmalloc_trim()`; the log line gives both figures.
 - Log could not be opened on hardware (`could not open D:\NETSURF.LOG (errno 0)`; pdclib does not map every Windows error). The log now falls back to `D:\NETSURF2.LOG`, then `E:\NETSURF.LOG`; `NSX-ERROR.LOG` records the Windows error codes of the open, remove and rename attempts.
