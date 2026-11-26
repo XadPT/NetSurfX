@@ -83,7 +83,7 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_splash.h"
 #include "xbox_sites.h"
 
-#define NSX_VERSION "0.9.1-test"
+#define NSX_VERSION "0.9.2-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -638,6 +638,13 @@ static bool nslog_stream_configure(FILE *fptr)
 
 static void fb_update_back_forward(struct gui_window *gw);
 
+/* Windows error code on the console, errno on the PC test build */
+#ifdef XBOX
+#define NSX_LAST_ERROR() ((unsigned long)GetLastError())
+#else
+#define NSX_LAST_ERROR() ((unsigned long)errno)
+#endif
+
 /* janela actual (o NetSurfX so usa uma) */
 static struct gui_window *fb_current(void)
 {
@@ -741,13 +748,20 @@ static void fb_memory_guard(void)
 	last_check = now;
 	free_kb = nsx_mem_free_kb();
 	if (free_kb == 0 || free_kb >= MEM_LOW_KB) return;
+	/* the system figure is low: count the heap's own free space too
+	 * (memory freed by earlier pages stays in the heap, see xbox_perf.c) */
+	free_kb = nsx_mem_avail_kb();
+	if (free_kb >= MEM_LOW_KB) return;
 
 	if (now - last_purge > 5000) {
+		uint32_t before = free_kb, sys = nsx_mem_free_kb();
 		last_purge = now;
 		llcache_clean(true);
-		NSLOG(netsurf, WARNING, "[PERF] low memory (%u KB free): cache purged, now %u KB",
-		      (unsigned)free_kb, (unsigned)nsx_mem_free_kb());
-		free_kb = nsx_mem_free_kb();
+		nsx_mem_trim();
+		free_kb = nsx_mem_avail_kb();
+		NSLOG(netsurf, WARNING, "[PERF] low memory (%u KB usable, %u KB system): cache purged, "
+		      "now %u KB usable, %u KB system",
+		      (unsigned)before, (unsigned)sys, (unsigned)free_kb, (unsigned)nsx_mem_free_kb());
 	}
 	gw = fb_current();
 	if (free_kb < MEM_CRIT_KB && gw != NULL && browser_window_stop_available(gw->bw) &&
@@ -3441,16 +3455,52 @@ main(int argc, char** argv)
 	/* diagnostico (versao de testes: ligado; NODEBUG.TXT desliga): escreve
 	 * NETSURF.LOG; o da sessao anterior fica em NETSURF.OLD */
 	if (nsx_debug_enabled()) {
-		remove("D:\\NETSURF.OLD");
-		rename("D:\\NETSURF.LOG", "D:\\NETSURF.OLD");
-		remove("D:\\NETSURF.LOG");
-		xargc = 3;
-		if (nslog_init(nslog_stream_configure, &xargc, xargv) != NSERROR_OK) {
-			char m[160];
-			snprintf(m, sizeof m, "NetSurfX %s: could not open D:\\NETSURF.LOG (errno %d); "
-				 "running without a log\n\n", NSX_VERSION, errno);
+		/*
+		 * The log normally is D:\NETSURF.LOG. If that file cannot be
+		 * created (seen on hardware after a session that ended badly:
+		 * a damaged directory entry), D:\NETSURF2.LOG and then
+		 * E:\NETSURF.LOG are tried, and why is written to NSX-ERROR.LOG
+		 * with the Windows error code.
+		 */
+		static char *const logs[] = { "D:\\NETSURF.LOG", "D:\\NETSURF2.LOG", "E:\\NETSURF.LOG" };
+		static char *const olds[] = { "D:\\NETSURF.OLD", "D:\\NETSURF2.OLD", "E:\\NETSURF.OLD" };
+		char m[400];
+		size_t ml = 0;
+		bool opened = false;
+
+		m[0] = '\0';
+		for (int i = 0; i < 3 && !opened; i++) {
+			FILE *t;
+			unsigned long rm_err, rn_err = 0, op_err;
+
+			if (!remove(olds[i])) rm_err = 0; else rm_err = NSX_LAST_ERROR();
+			if (rename(logs[i], olds[i]) != 0) rn_err = NSX_LAST_ERROR();
+			remove(logs[i]);
+			t = fopen(logs[i], "w");
+			if (t != NULL) {
+				fclose(t);
+				xargv[2] = logs[i];
+				xargc = 3;
+				opened = (nslog_init(nslog_stream_configure, &xargc, xargv) == NSERROR_OK);
+				if (opened)
+					break;
+			}
+			op_err = NSX_LAST_ERROR();
+			ml += (size_t)snprintf(m + ml, ml < sizeof m ? sizeof m - ml : 0,
+					       "NetSurfX %s: could not open %s (error %lu; "
+					       "removing the old copy: %lu, renaming: %lu)\n",
+					       NSX_VERSION, logs[i], (unsigned long)op_err,
+					       (unsigned long)rm_err, (unsigned long)rn_err);
+			if (ml >= sizeof m) ml = sizeof m - 1;
+		}
+		if (m[0] != '\0') {
+			if (!opened)
+				snprintf(m + ml, sizeof m - ml, "running without a log\n");
 			nsx_diag_note("D:\\NSX-ERROR.LOG", m);
 		}
+		if (opened && xargv[2] != logs[0])
+			NSLOG(netsurf, WARNING, "[NSX] log written to %s: %s could not be created "
+			      "(see NSX-ERROR.LOG)", xargv[2], logs[0]);
 	} else {
 		xargc = 1;
 		nslog_init(nslog_stream_configure, &xargc, nargv);

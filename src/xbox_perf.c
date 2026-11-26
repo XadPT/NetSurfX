@@ -111,6 +111,37 @@ static void heap_stats(uint32_t *used_kb, uint32_t *foot_kb)
 }
 
 uint32_t nsx_mem_free_kb(void) { uint32_t f, t; mem_stats(&f, &t); return f; }
+
+#ifdef XBOX
+extern int dlmalloc_trim(size_t pad);
+#endif
+
+/*
+ * Memory the browser can still use: free system pages plus the part of the
+ * heap that is free inside it. dlmalloc keeps freed memory for reuse and
+ * seldom gives it back to the system, so after a heavy page the system
+ * figure stays low although the heap has megabytes free. The heap walk
+ * costs time, so callers use this only when the system figure is low.
+ */
+uint32_t nsx_mem_avail_kb(void)
+{
+	uint32_t f = nsx_mem_free_kb();
+#ifdef XBOX
+	uint32_t used, foot;
+	heap_stats(&used, &foot);
+	if (foot > used)
+		f += foot - used;
+#endif
+	return f;
+}
+
+/* gives whole free heap segments back to the system (dlmalloc_trim) */
+void nsx_mem_trim(void)
+{
+#ifdef XBOX
+	dlmalloc_trim(64 * 1024);
+#endif
+}
 uint32_t nsx_mem_total_kb(void) { uint32_t f, t; mem_stats(&f, &t); return t; }
 
 /* ---------------------------------------------------------------- IRQL */
@@ -269,6 +300,8 @@ void nsx_perf_status(char *buf, size_t len)
 {
 	uint32_t free_kb, total_kb;
 	mem_stats(&free_kb, &total_kb);
+	if (free_kb < 12 * 1024)          /* low: add the heap's free space */
+		free_kb = nsx_mem_avail_kb();
 	snprintf(buf, len, "Free %u.%u MB | page %u.%u s | paint max %u ms | %u requests",
 		 (unsigned)(free_kb / 1024), (unsigned)((free_kb % 1024) * 10 / 1024),
 		 (unsigned)(P.last_page_ms / 1000), (unsigned)((P.last_page_ms % 1000) / 100),

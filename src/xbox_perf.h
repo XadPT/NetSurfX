@@ -11,6 +11,10 @@ uint32_t nsx_perf_us(void);
 
 /* physical memory (KB) */
 uint32_t nsx_mem_free_kb(void);
+/* free system memory plus free space inside the heap (slower: walks the heap) */
+uint32_t nsx_mem_avail_kb(void);
+/* returns unused heap segments to the system */
+void nsx_mem_trim(void);
 uint32_t nsx_mem_total_kb(void);
 
 /* NETSURF.LOG: periodic writes that reach the disk (NtFlushBuffersFile),

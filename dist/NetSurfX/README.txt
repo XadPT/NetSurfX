@@ -1,8 +1,17 @@
-NetSurfX 0.9.1 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.9.2 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.9.2
+  - Fix: after heavy pages the free memory shown stayed very low (e.g.
+    2.5 MB) even on light pages, and every link was stopped with "Low
+    memory". Memory freed by earlier pages stays inside the browser for
+    reuse and was not being counted. It now is, and when memory is low
+    the browser also hands unused memory back to the system.
+  - Fix: if D:\NETSURF.LOG cannot be created, the log goes to
+    D:\NETSURF2.LOG (or E:\NETSURF.LOG), and NSX-ERROR.LOG says why.
 
 NEW IN 0.9.1
   - Reader mode (Start menu): shows the page without the site's own

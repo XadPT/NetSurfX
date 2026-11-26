@@ -2,6 +2,10 @@
 
 All dates are 2026.
 
+## v0.9.2 (test build) — 26 Nov
+- Memory guard used only the kernel's free pages (`MmQueryStatistics`). pdclib's dlmalloc (Win32 mmap emulation) keeps freed memory in its segments and rarely returns it, so after Wikipedia with JavaScript the console showed 2.5 MB free on the home page and every navigation was stopped as "Low memory". When the kernel figure is below 12 MB, the guard and the status bar now count `nsx_mem_avail_kb()` = free pages + (heap footprint − heap in use), and the purge also calls `dlmalloc_trim()`; the log line gives both figures.
+- Log could not be opened on hardware (`could not open D:\NETSURF.LOG (errno 0)`; pdclib does not map every Windows error). The log now falls back to `D:\NETSURF2.LOG`, then `E:\NETSURF.LOG`; `NSX-ERROR.LOG` records the Windows error codes of the open, remove and rename attempts.
+
 ## v0.9.1 (test build) — 26 Nov
 - TLS cipher order (`tls_suites()` in `src/fetch_xbox.c`): ChaCha20-Poly1305 suites first (TLS 1.3 and 1.2 ECDHE), then every other suite mbedTLS supports in its own order. Logged once at start (`[NET] TLS cipher order`); the negotiated suite is now part of each `[NET]` line. On the PC, a server that honours client preference picks ChaCha20 for both TLS 1.3 and 1.2.
 - JPEG decode-time scaling (patch 22): `scale_denom` 2/4/8 while the result keeps at least 800×600 pixels; `c->width/height` stay the original size, so layout is unchanged. 4000×3000 → 1000×750 (3 MB instead of 48 MB).
