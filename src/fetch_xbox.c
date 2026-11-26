@@ -157,6 +157,7 @@ struct xf {
 	volatile int dl_status;      /* codigo HTTP da resposta */
 	/* --- tempos (diagnostico): escritos pela thread antes do resultado --- */
 	uint32_t t0, t_conn, t_tls, t_first, t_end;   /* ms (GetTickCount) */
+	const char *tls_suite;   /* negotiated cipher suite (static string) */
 	uint32_t bytes_in;
 	bool reused;
 
@@ -502,6 +503,44 @@ static const uint16_t g_tls_groups[] = {
 	MBEDTLS_SSL_IANA_TLS_GROUP_NONE
 };
 
+/*
+ * Cipher order: ChaCha20-Poly1305 first. A Pentium III has no AES
+ * instructions, and software AES-GCM (AES plus GHASH) costs it far more
+ * than ChaCha20-Poly1305. Every other suite mbedTLS supports follows, in
+ * its own order, so servers without ChaCha20 still connect.
+ */
+static int g_tls_suites[160];
+
+static const int *tls_suites(void)
+{
+	static const int pref[] = {
+		MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
+		MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		MBEDTLS_TLS1_3_AES_128_GCM_SHA256,
+		MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	};
+	const int *def;
+	size_t n = 0;
+
+	if (g_tls_suites[0] != 0)
+		return g_tls_suites;
+	for (size_t i = 0; i < sizeof pref / sizeof pref[0]; i++)
+		if (mbedtls_ssl_ciphersuite_from_id(pref[i]) != NULL)
+			g_tls_suites[n++] = pref[i];
+	for (def = mbedtls_ssl_list_ciphersuites(); *def != 0 &&
+	     n < sizeof g_tls_suites / sizeof g_tls_suites[0] - 1; def++) {
+		bool dup = false;
+		for (size_t j = 0; j < n; j++)
+			if (g_tls_suites[j] == *def) dup = true;
+		if (!dup)
+			g_tls_suites[n++] = *def;
+	}
+	g_tls_suites[n] = 0;
+	return g_tls_suites;
+}
+
 static void tls_cache_get(struct xf *f, mbedtls_ssl_context *ssl)
 {
 	EnterCriticalSection(&g_lock);
@@ -782,6 +821,7 @@ static struct conn *conn_open(struct xf *f)
 		/* P-256 first: with mbedTLS's NIST fast reduction and fixed-point
 		 * comb it is the cheapest key exchange on a 32-bit Pentium III */
 		mbedtls_ssl_conf_groups(&c->conf, g_tls_groups);
+		mbedtls_ssl_conf_ciphersuites(&c->conf, tls_suites());
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_SSL_SESSION_TICKETS)
 		mbedtls_ssl_conf_tls13_enable_signal_new_session_tickets(&c->conf,
 			MBEDTLS_SSL_TLS1_3_SIGNAL_NEW_SESSION_TICKETS_ENABLED);
@@ -808,7 +848,8 @@ static struct conn *conn_open(struct xf *f)
 			publish_chain(f, &vc, 0, NULL);
 			goto fail;
 		}
-		f->t_tls = GetTickCount() - th0; }
+		f->t_tls = GetTickCount() - th0;
+		f->tls_suite = mbedtls_ssl_get_ciphersuite(&c->ssl); }
 		/* a verificacao so acontece no handshake; vc deixa de existir */
 		mbedtls_ssl_conf_verify(&c->conf, NULL, NULL);
 		vflags = mbedtls_ssl_get_verify_result(&c->ssl);
@@ -1592,10 +1633,11 @@ static void xf_poll_one(struct xf *f)
 		{
 			/* diagnostico: tempos de cada pedido (ver NETSURF.LOG) */
 			uint32_t te = t_end ? t_end : GetTickCount();
-			NSLOG(netsurf, INFO, "[NET] %s code=%ld res=%d %ub %ums (conn %s +%ums, tls %ums, first byte +%ums) %s",
+			NSLOG(netsurf, INFO, "[NET] %s code=%ld res=%d %ub %ums (conn %s +%ums, tls %ums%s%s, first byte +%ums) %s",
 			      nsurl_access(f->url), f->http_code, result, (unsigned)f->bytes_in,
 			      (unsigned)(te - f->t0), f->reused ? "reused" : "new",
 			      f->t_conn ? (unsigned)(f->t_conn - f->t0) : 0, (unsigned)f->t_tls,
+			      f->tls_suite ? " " : "", f->tls_suite ? f->tls_suite : "",
 			      f->t_first ? (unsigned)(f->t_first - f->t0) : 0, err);
 			nsx_perf_fetch_done(te - f->t0, f->bytes_in, result == XR_OK);
 		}
@@ -1685,6 +1727,13 @@ nserror fetch_xbox_register(void)
 					  (const unsigned char *)"NetSurfX", 8) != 0)
 			NSLOG(netsurf, ERROR, "Failed to seed the TLS random generator");
 		g_user_agent = strdup(user_agent_string());
+		{
+			const int *cs = tls_suites(); /* built here, before any worker */
+			NSLOG(netsurf, INFO, "[NET] TLS cipher order: %s, %s, %s ...",
+			      mbedtls_ssl_get_ciphersuite_name(cs[0]),
+			      cs[0] ? mbedtls_ssl_get_ciphersuite_name(cs[1]) : "",
+			      cs[0] && cs[1] ? mbedtls_ssl_get_ciphersuite_name(cs[2]) : "");
+		}
 		g_inited = true;
 	}
 

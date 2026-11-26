@@ -40,6 +40,7 @@
 #include "framebuffer/framebuffer.h"
 #include "framebuffer/font.h"
 #include "framebuffer/xbox_ui.h"
+#include "framebuffer/schedule.h"
 
 #include "nsfb_xbox.h"
 #include "xbox_net.h"
@@ -202,6 +203,7 @@ static enum ui_btn ui_wait_button(void)
 	static uint32_t last_nav = 0;
 	static bool lt = false, rt = false;
 	SDL_Event ev;
+	nsfb_xbox_note_activity();   /* a menu is open: the user is here */
 	for (;;) {
 		nsx_check_igr();
 		nsx_heartbeat("menu / on-screen keyboard (waiting for a button)");
@@ -569,8 +571,8 @@ void nsx_help_show(void)
 		"White                 forward",
 		"X                     reload",
 		"Y                     type an address or search",
-		"Black                 bookmark this page",
-		"Start                 menu: bookmarks, history, find, settings",
+		"Black                 bookmark this page (again: remove it)",
+		"Start                 menu: bookmarks, history, reader mode, settings",
 		"Stick clicks          zoom out / zoom in",
 		"Back                  this help",
 		"L + R + Back + Black  return to the dashboard",
@@ -609,6 +611,92 @@ void nsx_help_show(void)
 	ui_wait_button();
 	ui_drain();
 	nsfb_xbox_block_input(false);
+	ui_restore();
+}
+
+/* ------------------------------------------------------------------ screensaver */
+
+/* any button, stick, trigger, key or mouse movement (consumed) */
+static bool ui_any_input(void)
+{
+	SDL_Event ev;
+	bool any = false;
+	int dx, dy, wh, mb;
+
+	nsx_usbhid_poll();
+	while (nsx_kbd_pending()) {
+		struct nsx_kev k;
+		if (!nsx_kbd_poll(&k)) break;
+		any = true;
+	}
+	if (nsx_mouse_take(&dx, &dy, &wh, &mb) && (dx || dy || wh || mb))
+		any = true;
+	while (SDL_PollEvent(&ev)) {
+		if (ev.type == SDL_CONTROLLERDEVICEADDED || ev.type == SDL_CONTROLLERDEVICEREMOVED)
+			nsfb_xbox_handle_hotplug(&ev);
+		else if (ev.type == SDL_CONTROLLERBUTTONDOWN)
+			any = true;
+	}
+	SDL_GameController *p = nsfb_xbox_pad();
+	if (p != NULL) {
+		static const SDL_GameControllerAxis ax[] = {
+			SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY,
+			SDL_CONTROLLER_AXIS_RIGHTX, SDL_CONTROLLER_AXIS_RIGHTY };
+		for (size_t i = 0; i < sizeof ax / sizeof ax[0]; i++)
+			if (abs(SDL_GameControllerGetAxis(p, ax[i])) > 16000) any = true;
+		if (SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > TRIG_ON ||
+		    SDL_GameControllerGetAxis(p, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > TRIG_ON)
+			any = true;
+	}
+	return any;
+}
+
+/*
+ * Black screen with the name drifting slowly, until any input. The
+ * scheduler keeps running (downloads and page loads go on); the page is
+ * painted again when the saver ends.
+ */
+void nsx_screensaver_run(void)
+{
+	int W = nsfb_get_width_safe(), H = nsfb_get_height_safe();
+	plot_font_style_t fb, fh;
+	const char *name = "NetSurfX", *hint = "Press any button";
+	int x, y, vx = 1, vy = 1, bw, bh;
+	uint32_t next = 0;
+
+	NSLOG(netsurf, INFO, "Screensaver on");
+	ui_style(&fb, 28, true, 0x00ffffff, 0x000000);
+	ui_style(&fh, 10, false, 0x00707070, 0x000000);
+	bw = ui_text_width(&fb, name, strlen(name));
+	if (ui_text_width(&fh, hint, strlen(hint)) > bw)
+		bw = ui_text_width(&fh, hint, strlen(hint));
+	bh = 70;
+	x = (W - bw) / 3;
+	y = H / 3;
+	nsfb_xbox_block_input(true);
+	while (!ui_any_input()) {
+		uint32_t now = SDL_GetTicks();
+		nsx_check_igr();
+		nsx_heartbeat("screensaver");
+		schedule_run();
+		if ((int32_t)(now - next) >= 0) {
+			/* a small step every 2 s: nothing stays lit in one place */
+			x += vx * 24;
+			y += vy * 16;
+			if (x < 8 || x + bw > W - 8) { vx = -vx; x += vx * 48; }
+			if (y < 8 || y + bh > H - 8) { vy = -vy; y += vy * 32; }
+			ui_fill(0, 0, W, H, 0xff000000);
+			ui_text(x, y + 36, &fb, name, strlen(name));
+			ui_text(x, y + 62, &fh, hint, strlen(hint));
+			ui_present();
+			next = now + 2000;
+		}
+		Sleep(30);
+	}
+	ui_drain();
+	nsfb_xbox_block_input(false);
+	nsfb_xbox_note_activity();
+	NSLOG(netsurf, INFO, "Screensaver off");
 	ui_restore();
 }
 
@@ -659,7 +747,8 @@ static void bm_write_html(void)
 	}
 	if (n == 0)
 		fputs("<li>No bookmarks yet. On any page, press the Black button to add it.</li>\n", out);
-	fputs("</ul>\n<p class=\"small\">To remove bookmarks, edit data\\bookmarks.txt over FTP.</p>\n</body></html>\n", out);
+	fputs("</ul>\n<p class=\"small\">To remove a bookmark, press the Black button on this page "
+	      "(or on the bookmarked page itself).</p>\n</body></html>\n", out);
 	fclose(out);
 }
 
@@ -688,6 +777,120 @@ bool nsx_bookmark_add(struct browser_window *bw)
 	fclose(f);
 	bm_write_html();
 	return true;
+}
+
+/* bookmarks.txt as an array of lines ("url<TAB>title"); returns the count */
+#define BM_MAX 500
+static int bm_load(char **lines)
+{
+	FILE *f = fopen(BM_TXT, "r");
+	char line[1200];
+	int n = 0;
+	if (f == NULL) return 0;
+	while (n < BM_MAX && fgets(line, sizeof line, f)) {
+		size_t l = strlen(line);
+		while (l && (line[l - 1] == '\n' || line[l - 1] == '\r')) line[--l] = 0;
+		if (l == 0) continue;
+		if ((lines[n] = strdup(line)) == NULL) break;
+		n++;
+	}
+	fclose(f);
+	return n;
+}
+
+static bool bm_save(char **lines, int n)
+{
+	FILE *f = fopen(BM_TXT, "w");
+	bool ok;
+	if (f == NULL) return false;
+	for (int i = 0; i < n; i++)
+		fprintf(f, "%s\n", lines[i]);
+	ok = (fclose(f) == 0);
+	bm_write_html();
+	return ok;
+}
+
+static void bm_free(char **lines, int n)
+{
+	for (int i = 0; i < n; i++) free(lines[i]);
+}
+
+/* index of url in lines, or -1 */
+static int bm_find(char **lines, int n, const char *url)
+{
+	size_t ul = strlen(url);
+	for (int i = 0; i < n; i++)
+		if (strncmp(lines[i], url, ul) == 0 &&
+		    (lines[i][ul] == '\t' || lines[i][ul] == '\0'))
+			return i;
+	return -1;
+}
+
+/* the list of bookmarks as a menu; A removes the chosen one */
+static void bm_manage(void)
+{
+	char **lines = calloc(BM_MAX, sizeof *lines);
+	const char **labels;
+	int n, sel = 0;
+
+	if (lines == NULL) return;
+	n = bm_load(lines);
+	labels = calloc(n > 0 ? n : 1, sizeof *labels);
+	if (labels == NULL) { bm_free(lines, n); free(lines); return; }
+	if (n == 0)
+		nsx_toast("No bookmarks yet");
+	while (n > 0) {
+		static const char *const yn[] = { "No", "Yes, remove it" };
+		for (int i = 0; i < n; i++) {
+			const char *tab = strchr(lines[i], '\t');
+			labels[i] = (tab && tab[1]) ? tab + 1 : lines[i];
+		}
+		sel = nsx_menu("Remove a bookmark", labels, n, sel, "A remove   B close", NULL);
+		if (sel < 0) break;
+		if (nsx_menu("Remove this bookmark?", yn, 2, 0, NULL, NULL) != 1)
+			continue;
+		free(lines[sel]);
+		memmove(&lines[sel], &lines[sel + 1], (size_t)(n - sel - 1) * sizeof *lines);
+		n--;
+		if (sel >= n) sel = n - 1;
+		if (!bm_save(lines, n)) { nsx_toast("Could not save the bookmarks"); break; }
+	}
+	free(labels);
+	bm_free(lines, n);
+	free(lines);
+}
+
+void nsx_bookmark_button(struct browser_window *bw)
+{
+	nsurl *url;
+	char **lines;
+	int n, at;
+
+	if (bw == NULL || (url = browser_window_access_url(bw)) == NULL) return;
+	if (strcmp(nsurl_access(url), "file:///D:/data/bookmarks.html") == 0) {
+		bm_manage();
+		browser_window_reload(bw, false);
+		return;
+	}
+	lines = calloc(BM_MAX, sizeof *lines);
+	if (lines == NULL) return;
+	n = bm_load(lines);
+	at = bm_find(lines, n, nsurl_access(url));
+	if (at < 0) {
+		nsx_toast(nsx_bookmark_add(bw) ? "Added to bookmarks" :
+			  "This page cannot be bookmarked");
+	} else {
+		static const char *const opt[] = { "Keep the bookmark", "Remove it from bookmarks" };
+		if (nsx_menu("This page is already a bookmark", opt, 2, 0, NULL, NULL) == 1) {
+			free(lines[at]);
+			memmove(&lines[at], &lines[at + 1], (size_t)(n - at - 1) * sizeof *lines);
+			n--;
+			nsx_toast(bm_save(lines, n) ? "Removed from bookmarks" :
+				  "Could not save the bookmarks");
+		}
+	}
+	bm_free(lines, n);
+	free(lines);
 }
 
 /* ------------------------------------------------------------------ mensagem rapida */

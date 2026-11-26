@@ -3,6 +3,7 @@
 #define NSFB_XBOX_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 enum nsx_cmd {
 	NSX_CMD_NONE = 0,
@@ -34,6 +35,9 @@ void nsfb_xbox_take_scroll(int *dx, int *dy);
 void nsfb_xbox_get_pointer(int *x, int *y);
 void nsfb_xbox_set_pointer(int x, int y);
 void nsfb_xbox_block_input(bool block);
+/* screensaver: time since the last input, and "the user is here" */
+uint32_t nsfb_xbox_idle_ms(void);
+void nsfb_xbox_note_activity(void);
 void nsfb_xbox_present_now(struct nsfb_s *nsfb);
 struct _SDL_GameController *nsfb_xbox_pad(void);
 void nsfb_xbox_handle_hotplug(const void *sdl_event);

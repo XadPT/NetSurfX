@@ -1,0 +1,17 @@
+2500 tap BLACK
+3800 tap BLACK
+4300 shot BM1.png
+4400 tap DOWN
+4600 tap A
+5800 tap BLACK
+7000 tap START
+7200 tap DOWN
+7400 tap A
+9000 tap BLACK
+9500 shot BM2.png
+9700 tap A
+10000 shot BM3.png
+10200 tap DOWN
+10400 tap A
+11500 shot BM4.png
+11800 quit

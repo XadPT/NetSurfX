@@ -63,6 +63,10 @@ NSOPTION_STRING(xbox_download_dir, "E:\\Downloads")
 NSOPTION_BOOL(xbox_google_redirect, true)
 /* memory each page's JavaScript may use (MB) */
 NSOPTION_INTEGER(xbox_js_memory, 6)
+/* dark mode: res\dark.css instead of res\user.css */
+NSOPTION_BOOL(xbox_dark_mode, false)
+/* screensaver after this many idle minutes (0 = never) */
+NSOPTION_INTEGER(xbox_screensaver, 5)
 
 /***** font options *****/
 

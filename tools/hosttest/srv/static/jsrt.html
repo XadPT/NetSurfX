@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><title>JS runtime twice</title></head><body>
+<h3 id="h">runtime test</h3><p class="x y" id="p">para</p><div id="out"></div>
+<script>
+var n = (location.search.match(/n=(\d)/)||[0,0])[1]|0;
+var r=[];
+try{
+ r.push('URL:'+new URL('http://a.b/c?d=1').searchParams.get('d'));
+ r.push('qs:'+document.querySelector('p.x').id);
+ r.push('cls:'+document.getElementById('p').classList.contains('y'));
+ r.push('TE:'+new TextEncoder().encode('ab').length);
+}catch(e){r.push('ERR '+e);}
+document.getElementById('out').textContent='load '+n+' '+r.join(' ');
+if(n<2) setTimeout(function(){location.href='jsrt.html?n='+(n+1);},400);
+</script></body></html>

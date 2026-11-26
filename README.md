@@ -15,10 +15,12 @@ As far as we know, NetSurfX is the most capable browser the original Xbox has ha
 - Web fonts (`@font-face`) in TTF/OTF and **WOFF** (an in-house WOFF→SFNT converter, because the nxdk FreeType 2.4 cannot read WOFF). WOFF2 is not supported yet.
 - Images: PNG, JPEG, GIF, BMP, **SVG** (via libsvgtiny + expat) and **WebP** (libwebp decoder).
 - HTML forms, cookies, redirects, history (persisted between sessions), bookmarks.
+- **JavaScript (experimental, off by default)**: QuickJS-ng with the netsurf-switch DOM bindings; per-page memory and time limits, per-site on/off rules.
+- Large JPEG photos are decoded at 1/2–1/8 scale (never below ~800×600 pixels) while keeping their layout size: a 12-megapixel photo costs about 3 MB instead of 48 MB.
 
 **Networking**
 - Custom Xbox fetcher (`src/fetch_xbox.c`) instead of curl: one worker thread per request over lwIP.
-- **HTTPS** with mbedTLS 3.6 (TLS 1.2/1.3, certificate verification, NetSurf's "Proceed anyway" warning page, TLS session resumption).
+- **HTTPS** with mbedTLS 3.6 (TLS 1.2/1.3, certificate verification, NetSurf's "Proceed anyway" warning page, TLS session resumption). ChaCha20-Poly1305 is offered first, since the Pentium III has no AES instructions.
 - HTTP/1.1 **keep-alive connection pool**, in-app **DNS cache**, gzip/deflate, chunked encoding.
 - Uses the dashboard network settings, including manual DNS (e.g. for Insignia).
 - lwIP socket table raised from 4 to 16 (the stock limit made image-heavy pages fail).
@@ -29,8 +31,9 @@ As far as we know, NetSurfX is the most capable browser the original Xbox has ha
 - Left stick = pointer, right stick = smooth scroll, triggers = page up/down, A = click.
 - **D-pad spatial navigation**: jumps between links and form fields (Wii/3DS style), scrolls when there is nothing in that direction.
 - On-screen keyboard for the URL bar and page fields (with accents and shortcut keys).
-- **Start menu**: home, bookmarks, history, find in page, zoom, settings, downloads, help, exit.
-- Settings: search engine, "site version" (normal / mobile / light / text user-agent), D-pad mode, images on/off, ad blocking, 720p, USB keyboard layout, download folder, on-screen stats, clear browsing data.
+- **Start menu**: home, bookmarks, history, find in page, zoom, reader mode (page without the site's styles), screenshot (BMP), settings, downloads, help, exit.
+- Settings: search engine, Google redirect, "site version" (normal / mobile / light / text user-agent), JavaScript (global and per site), D-pad mode, images on/off, ad blocking, dark mode, screensaver, 720p, USB keyboard layout, download folder, on-screen stats, clear browsing data.
+- Bookmarks are added and removed with the Black button.
 - **USB keyboard and mouse** (through a controller-port-to-USB adapter), with shortcuts (Ctrl+L, F5, Alt+←, Ctrl+F, …).
 - In-game reset (L + R + Back + Black) returns to the dashboard; cookies, history and the cache index are saved on every exit path.
 - 480p by default, optional 720p, overscan margins.

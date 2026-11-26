@@ -1,0 +1,29 @@
+/*
+ * NetSurfX dark mode (Start > Settings > Dark mode).
+ * Used instead of user.css while dark mode is on. User rules marked
+ * !important beat the site's own rules, so every page gets these colours.
+ * Pictures are left alone.
+ */
+html, body, div, section, article, aside, header, footer, nav, main,
+table, thead, tbody, tfoot, tr, td, th, ul, ol, li, dl, dt, dd,
+p, span, form, fieldset, blockquote, pre, code, h1, h2, h3, h4, h5, h6,
+center, font, label, small, big, b, i, em, strong, figure, figcaption {
+	background-color: #1b1d21 !important;
+	color: #d6d6d6 !important;
+	border-color: #3c4048 !important;
+}
+
+a, a * { color: #7fb4ff !important; }
+a:visited, a:visited * { color: #c49cff !important; }
+
+input, textarea, select, button {
+	background-color: #2a2d33 !important;
+	color: #e8e8e8 !important;
+	border-color: #555b66 !important;
+}
+
+hr { border-color: #3c4048 !important; background-color: #3c4048 !important; }
+mark { background-color: #6b5a12 !important; color: #ffffff !important; }
+
+/* boxes that only exist to paint a picture keep it visible */
+img, svg, video, canvas, object, embed, picture { background-color: transparent !important; }

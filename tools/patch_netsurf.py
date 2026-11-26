@@ -227,6 +227,175 @@ edit('netsurf/content/handlers/javascript/quickjs/quickjs.c',
      '\t}\n',
      'NSX jscost')
 
+# 22. jpeg.c: big photos are decoded at 1/2, 1/4 or 1/8 size (libjpeg does
+#     it nearly for free, in the IDCT) while the layout keeps the original
+#     size, so a 4000x3000 photo takes 3 MB of RAM instead of 48 MB. The
+#     smallest result is still about 800x600 worth of pixels.
+edit('netsurf/content/handlers/image/jpeg.c',
+     '\tcinfo.dct_method = JDCT_ISLOW;\n\n\t/* commence the decompression, output parameters now valid */\n',
+     '\tcinfo.dct_method = JDCT_ISLOW;\n\n'
+     '#ifdef WITH_XBOXFETCH /* NSX jpegscale */\n'
+     '\t{\n'
+     '\t\tunsigned d = 1;\n'
+     '\t\twhile (d < 8 && (unsigned long)(cinfo.image_width / (d * 2)) *\n'
+     '\t\t       (cinfo.image_height / (d * 2)) >= 800UL * 600UL)\n'
+     '\t\t\td *= 2;\n'
+     '\t\tcinfo.scale_num = 1;\n'
+     '\t\tcinfo.scale_denom = d;\n'
+     '\t\tif (d > 1)\n'
+     '\t\t\tNSLOG(netsurf, INFO, "[PERF] JPEG %ux%u decoded at 1/%u",\n'
+     '\t\t\t      cinfo.image_width, cinfo.image_height, d);\n'
+     '\t}\n'
+     '#endif\n\n'
+     '\t/* commence the decompression, output parameters now valid */\n',
+     'NSX jpegscale')
+
+# 23. qjs_dom.c: runtime.js (about 100 KB of source) is compiled to QuickJS
+#     bytecode once per session; every later page loads the bytecode, which
+#     skips the parser. The bytecode is ours, built in this process, so
+#     reading it back is safe. Host: 11 ms to compile, 1 ms to load.
+edit('netsurf/content/handlers/javascript/quickjs/qjs_dom.c',
+     '''	/* the web platform runtime (runtime.js) */
+	{
+		/* the embedded array is not NUL terminated */
+		char *src = malloc(runtime_js_len + 1);
+		if (src != NULL) {
+			memcpy(src, runtime_js, runtime_js_len);
+			src[runtime_js_len] = '\\0';
+			setup = JS_Eval(ctx, src, runtime_js_len,
+					"<netsurf-runtime>",
+					JS_EVAL_TYPE_GLOBAL);
+			free(src);
+			if (JS_IsException(setup))
+				qjs_dump_error(ctx);
+			JS_FreeValue(ctx, setup);
+		}
+	}
+''',
+     '''	/* the web platform runtime (runtime.js) */
+	{
+		/* NSX rtbytecode: compiled once, then loaded as bytecode */
+		static uint8_t *rt_bc;
+		static size_t rt_bc_len;
+		JSValue fn = JS_UNDEFINED;
+
+		if (rt_bc != NULL) {
+			fn = JS_ReadObject(ctx, rt_bc, rt_bc_len,
+					   JS_READ_OBJ_BYTECODE);
+		} else {
+			/* the embedded array is not NUL terminated */
+			char *src = malloc(runtime_js_len + 1);
+			if (src != NULL) {
+				memcpy(src, runtime_js, runtime_js_len);
+				src[runtime_js_len] = '\\0';
+				fn = JS_Eval(ctx, src, runtime_js_len,
+					     "<netsurf-runtime>",
+					     JS_EVAL_TYPE_GLOBAL |
+					     JS_EVAL_FLAG_COMPILE_ONLY);
+				free(src);
+			}
+			if (!JS_IsException(fn) && !JS_IsUndefined(fn)) {
+				size_t n = 0;
+				/* without the source text: 120 KB, not 390 */
+				uint8_t *bc = JS_WriteObject(ctx, &n, fn,
+						JS_WRITE_OBJ_BYTECODE |
+						JS_WRITE_OBJ_STRIP_SOURCE);
+				if (bc != NULL) {
+					/* own copy: the runtime that made it
+					 * is freed with this page */
+					rt_bc = malloc(n);
+					if (rt_bc != NULL) {
+						memcpy(rt_bc, bc, n);
+						rt_bc_len = n;
+					}
+					js_free(ctx, bc);
+				}
+			}
+		}
+		if (JS_IsException(fn)) {
+			qjs_dump_error(ctx);
+		} else if (!JS_IsUndefined(fn)) {
+			setup = JS_EvalFunction(ctx, fn); /* frees fn */
+			if (JS_IsException(setup))
+				qjs_dump_error(ctx);
+			JS_FreeValue(ctx, setup);
+		}
+	}
+''', 'NSX rtbytecode')
+
+# 24. html.c: per-site JavaScript (D:\data\js-sites.txt, Start > Settings).
+edit('netsurf/content/handlers/html/html.c',
+     '\tc->enable_scripting = nsoption_bool(enable_javascript);\n',
+     '\tc->enable_scripting = nsoption_bool(enable_javascript);\n'
+     '#ifdef WITH_XBOXFETCH /* NSX jssite */\n'
+     '\t{\n'
+     '\t\textern bool nsx_site_js_allowed(struct nsurl *url, bool def);\n'
+     '\t\tc->enable_scripting = nsx_site_js_allowed(\n'
+     '\t\t\tllcache_handle_get_url(c->base.llcache),\n'
+     '\t\t\tc->enable_scripting);\n'
+     '\t}\n'
+     '#endif\n',
+     'NSX jssite')
+
+# 25. Reader mode and dark mode.
+#     Reader mode: author_level_css off (Start menu) drops the site's own
+#     style sheets. Upstream already skips <link> sheets and style=""
+#     attributes; this leaves <style> sheets out of the cascade too.
+#     Dark mode: resource:dark.css replaces user.css; it uses !important
+#     user rules, which beat every author rule in the cascade.
+edit('netsurf/content/handlers/html/css.c',
+     '''		if (hsheet->unused) {
+			continue;
+		}''',
+     '''		if (hsheet->unused) {
+			continue;
+		}
+		/* NSX readersel: reader mode, UA and user sheets only */
+		if (i >= STYLESHEET_START && !nsoption_bool(author_level_css)) {
+			continue;
+		}''',
+     'NSX readersel')
+edit('netsurf/content/handlers/html/css.c',
+     '''static nsurl *html_user_stylesheet_url;
+''',
+     '''static nsurl *html_user_stylesheet_url;
+static nsurl *html_dark_stylesheet_url; /* NSX dark */
+''',
+     'NSX dark */')
+edit('netsurf/content/handlers/html/css.c',
+     '''	ns_error = hlcache_handle_retrieve(html_user_stylesheet_url, 0,''',
+     '''	ns_error = hlcache_handle_retrieve(
+			(nsoption_bool(xbox_dark_mode) &&
+			 html_dark_stylesheet_url != NULL) ? /* NSX darkuse */
+			html_dark_stylesheet_url : html_user_stylesheet_url, 0,''',
+     'NSX darkuse')
+edit('netsurf/content/handlers/html/css.c',
+     '''	error = nsurl_create("resource:user.css",
+			&html_user_stylesheet_url);
+''',
+     '''	error = nsurl_create("resource:user.css",
+			&html_user_stylesheet_url);
+	if (error == NSERROR_OK) /* NSX darkinit */
+		error = nsurl_create("resource:dark.css",
+				&html_dark_stylesheet_url);
+''',
+     'NSX darkinit')
+edit('netsurf/content/handlers/html/css.c',
+     '''	if (html_user_stylesheet_url != NULL) {''',
+     '''	if (html_dark_stylesheet_url != NULL) { /* NSX darkfini */
+		nsurl_unref(html_dark_stylesheet_url);
+		html_dark_stylesheet_url = NULL;
+	}
+	if (html_user_stylesheet_url != NULL) {''',
+     'NSX darkfini')
+edit('netsurf/content/fetchers/resource.c',
+     '''	"user.css",
+''',
+     '''	"user.css",
+	"dark.css", /* NSX darkres */
+''',
+     'NSX darkres')
+
 # 14. Fixes from upstream NetSurf and its libraries (git.netsurf-browser.org,
 #     mirrored on github.com/netsurf-browser) that are newer than the
 #     netsurf-switch fork. Kept as patches in tools/upstream/<tree>/, applied

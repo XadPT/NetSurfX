@@ -48,3 +48,9 @@
 #
 # Language sent to web sites
 #accept_language:en-US, en
+#
+# Dark mode: 1 = light text on a dark background on every site
+#xbox_dark_mode:0
+#
+# Screensaver after this many idle minutes (0 = never)
+#xbox_screensaver:5

@@ -1,8 +1,35 @@
-NetSurfX 0.9.0 (test build) - the NetSurf web browser for the original Xbox
+NetSurfX 0.9.1 (test build) - the NetSurf web browser for the original Xbox
 ============================================================================
 
 This is a TEST build: diagnostics are switched on (see DIAGNOSTICS below).
 Project page: https://github.com/XadPT/NetSurfX
+
+NEW IN 0.9.1
+  - Reader mode (Start menu): shows the page without the site's own
+    styles, as plain readable text. Handy on cluttered or broken pages.
+    It lasts until you turn it off or restart.
+  - Dark mode (Start > Settings): light text on a dark background on
+    every site. It uses res\dark.css in place of res\user.css.
+  - JavaScript per site (Start > Settings > "JavaScript on <site>"):
+    default, always on or always off for the site you are on, whatever
+    the main JavaScript setting says. Kept in data\js-sites.txt.
+  - Removing bookmarks on the console: press Black on a page that is
+    already a bookmark, or on the bookmarks page to pick one from a list.
+  - Screenshots (Start menu): saved as BMP files in E:\Screenshots (the
+    drive of your download folder), or D:\Screenshots if that fails.
+  - Screensaver: after 5 idle minutes the screen goes black with a
+    slowly moving name; any button brings the page back (the button does
+    nothing else). Downloads and page loads carry on. Start > Settings
+    sets 2, 5, 10 or 20 minutes, or off.
+  - Big JPEG photos are decoded at 1/2, 1/4 or 1/8 of their size when
+    that still leaves at least 800x600 pixels: a 12-megapixel photo now
+    takes about 3 MB of memory instead of 48 MB, and decodes faster. It
+    is still shown at the size the page asks for.
+  - Secure sites: ChaCha20-Poly1305 is offered first. The Xbox processor
+    has no AES instructions and runs it much faster than AES-GCM, so
+    HTTPS pages take less processor time (sites without it still use AES).
+  - JavaScript: the browser's own script library is compiled once per
+    session instead of on every page (about 10 times quicker per page).
 
 NEW IN 0.9.0 - JAVASCRIPT (EXPERIMENTAL)
   - JavaScript engine (QuickJS-ng) with the page bindings of the NetSurf
@@ -119,8 +146,10 @@ CONTROLLER
   D-pad .................. jump between links and fields
   B ...................... back                White ... forward
   X ...................... reload              Y ....... address or search
-  Black .................. bookmark this page
-  Start .................. menu (bookmarks, history, find, settings)
+  Black .................. bookmark this page (on a bookmarked page or on
+                           the bookmarks page: remove a bookmark)
+  Start .................. menu (bookmarks, history, find, reader mode,
+                           screenshot, settings)
   Back ................... help
   Stick clicks ........... zoom out / zoom in
   L + R + Back + Black ... return to the dashboard (IGR)

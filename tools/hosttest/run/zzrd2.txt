@@ -1,0 +1,18 @@
+2500 shot RD0.png
+2700 tap START
+2900 tap DOWN
+3000 tap DOWN
+3100 tap DOWN
+3200 tap DOWN
+3300 tap DOWN
+3500 tap A
+5500 shot RD1.png
+5700 tap START
+5900 tap DOWN
+6000 tap DOWN
+6100 tap DOWN
+6200 tap DOWN
+6300 tap DOWN
+6400 tap DOWN
+6600 tap A
+8000 quit

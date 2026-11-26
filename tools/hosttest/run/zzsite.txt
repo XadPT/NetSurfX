@@ -1,0 +1,17 @@
+3000 tap START
+3300 tap DOWN
+3450 tap DOWN
+3600 tap DOWN
+3750 tap DOWN
+3900 tap DOWN
+4100 tap A
+4400 tap DOWN
+4550 tap DOWN
+4700 tap DOWN
+4850 tap DOWN
+5000 tap A
+5300 tap A
+5500 shot SITE.png
+5700 tap B
+7000 shot SITE2.png
+7200 quit

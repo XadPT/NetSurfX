@@ -2,6 +2,18 @@
 
 All dates are 2026.
 
+## v0.9.1 (test build) — 26 Nov
+- TLS cipher order (`tls_suites()` in `src/fetch_xbox.c`): ChaCha20-Poly1305 suites first (TLS 1.3 and 1.2 ECDHE), then every other suite mbedTLS supports in its own order. Logged once at start (`[NET] TLS cipher order`); the negotiated suite is now part of each `[NET]` line. On the PC, a server that honours client preference picks ChaCha20 for both TLS 1.3 and 1.2.
+- JPEG decode-time scaling (patch 22): `scale_denom` 2/4/8 while the result keeps at least 800×600 pixels; `c->width/height` stay the original size, so layout is unchanged. 4000×3000 → 1000×750 (3 MB instead of 48 MB).
+- `runtime.js` bytecode cache (patch 23): compiled once per session with `JS_EVAL_FLAG_COMPILE_ONLY`, serialised with `JS_WriteObject` (without source text: 120 KB instead of 390 KB), and loaded with `JS_ReadObject` + `JS_EvalFunction` for every later page. PC: 11 ms to compile vs 1 ms to load.
+- Per-site JavaScript (`src/xbox_sites.c`, patch 24): `D:\data\js-sites.txt` (`+site` / `-site`, subdomains included, longest match wins) overrides `enable_javascript` in `html_create_html_data`; *Settings → JavaScript on <site>* cycles default / always on / always off.
+- Reader mode (Start menu): toggles `author_level_css` (reset to on at every start). Upstream already skipped `<link>` sheets and `style=""`; patch 25 leaves `<style>` sheets out of the selection context too.
+- Dark mode (*Settings*): `resource:dark.css` (new `res/dark.css`, `!important` user rules) replaces `user.css` (patch 25).
+- Bookmarks: Black on a bookmarked page offers to remove it; Black on the bookmarks page lists them for removal (`nsx_bookmark_button`).
+- Screenshots (Start menu): 24-bit BMP of the screen to `<download drive>:\Screenshots\NSXnnnn.BMP`, falling back to `D:\Screenshots`.
+- Screensaver (`xbox_screensaver`, default 5 min, *Settings*): idle time tracked in `nsfb_xbox.c`; the saver keeps calling `schedule_run()` so loads and downloads continue, swallows the waking input and repaints the page.
+- Host tests: jpeg.c is now built on the PC (IJG libjpeg 9b from SDL2_image) with `WITH_JPEG`; new scripts for the features above; all suites clean under ASan, TSan and the our-libc build.
+
 ## v0.9.0 (test build) — 23 Nov — JavaScript (experimental)
 - QuickJS-ng v0.17.0 built for nxdk (`tools/build_quickjs.sh`, shims in `qjsshim/`) with the netsurf-switch QuickJS backend and its hand-written DOM bindings and `runtime.js` web-platform shim (embedded by `tools/gen_runtime_js.py`). Off by default; *Settings → JavaScript*.
 - Limits (patch 17): `xbox_js_memory` MB per runtime (default 6, clamped 2–24), 384 KB JS stack, GC threshold 512 KB, `script_timeout` 5 s. A page's script context costs about 1 MB (patch 21 logs `[PERF] JS context ready`).

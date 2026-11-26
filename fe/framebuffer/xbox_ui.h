@@ -13,6 +13,10 @@ bool nsx_osk_run(const char *title, const char *initial, char *out, size_t outsz
 void nsx_help_show(void);
 void nsx_bookmarks_init(void);
 bool nsx_bookmark_add(struct browser_window *bw);
+/* Black button: add the page, or offer to remove it (bookmark list on the bookmarks page) */
+void nsx_bookmark_button(struct browser_window *bw);
+/* screensaver: black screen until any input (the scheduler keeps running) */
+void nsx_screensaver_run(void);
 void nsx_toast(const char *msg);
 /* keep the screen when a menu returns a choice (menus redrawn in a loop) */
 void nsx_menu_keep(bool keep);

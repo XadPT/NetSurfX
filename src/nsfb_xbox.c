@@ -125,6 +125,15 @@ static void cmdpush(xb_priv *p, int cmd)
 	p->cn++;
 }
 
+/* last time the user touched anything (for the screensaver) */
+static uint32_t g_activity;
+void nsfb_xbox_note_activity(void) { g_activity = SDL_GetTicks(); }
+uint32_t nsfb_xbox_idle_ms(void)
+{
+	if (g_activity == 0) g_activity = SDL_GetTicks();
+	return SDL_GetTicks() - g_activity;
+}
+
 static bool g_dpad_links = true;
 void nsfb_xbox_set_dpad_links(bool on) { g_dpad_links = on; }
 
@@ -274,6 +283,7 @@ static void pump_usb(nsfb_t *nsfb, xb_priv *p)
 
 	nsx_usbhid_poll();
 	if (!nsx_mouse_take(&dx, &dy, &wheel, &b)) return;
+	if (dx || dy || wheel || b != p->mouse_buttons) g_activity = SDL_GetTicks();
 	if (p->input_blocked) { p->mouse_buttons = b; return; }
 
 	if (dx || dy) {
@@ -328,6 +338,7 @@ static void handle_sdl(xb_priv *p, const SDL_Event *ev)
 	case SDL_CONTROLLERBUTTONUP: {
 		bool down = ev->type == SDL_CONTROLLERBUTTONDOWN;
 		int key = 0;
+		g_activity = SDL_GetTicks();
 		if (p->input_blocked) return;
 		switch (ev->cbutton.button) {
 		case SDL_CONTROLLER_BUTTON_A:
@@ -535,6 +546,8 @@ static bool xb_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
 		while (SDL_PollEvent(&ev)) handle_sdl(p, &ev);
 		pump_sticks(nsfb, p);
 		pump_usb(nsfb, p);
+		if (stick_active(p) || p->lt || p->rt || nsx_kbd_pending())
+			g_activity = SDL_GetTicks();
 		if (qpop(p, event)) return true;
 		/* comandos, teclado e scroll sao lidos pelo frontend: acorda-o */
 		if (p->cn > 0 || fabsf(p->scroll_x) >= 1.0f || fabsf(p->scroll_y) >= 1.0f ||

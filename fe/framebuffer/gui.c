@@ -81,8 +81,9 @@ extern struct gui_canvas_table *framebuffer_canvas_table;
 #include "xbox_perf.h"
 #include "content/llcache.h"
 #include "xbox_splash.h"
+#include "xbox_sites.h"
 
-#define NSX_VERSION "0.9.0-test"
+#define NSX_VERSION "0.9.1-test"
 #include "netsurf/download.h"
 #include "desktop/download.h"
 #include "framebuffer/xbox_file.h"
@@ -1185,7 +1186,7 @@ static void fb_save_choices(void)
 
 static void fb_settings_menu(struct gui_window *gw)
 {
-	enum { S_SEARCH, S_GOOGLE, S_UA, S_JS, S_DPAD, S_IMAGES, S_ADS, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
+	enum { S_SEARCH, S_GOOGLE, S_UA, S_JS, S_JSSITE, S_DPAD, S_IMAGES, S_ADS, S_DARK, S_SAVER, S_HD, S_KBD, S_DLDIR, S_STATS, S_CLEAR, S_COUNT };
 	char lbl[S_COUNT][160];
 	const char *labels[S_COUNT];
 	int sel = 0, dir;
@@ -1211,8 +1212,23 @@ static void fb_settings_menu(struct gui_window *gw)
 		snprintf(lbl[S_DLDIR], sizeof lbl[0], "Download folder:  %s", nsoption_charp(xbox_download_dir));
 		snprintf(lbl[S_JS], sizeof lbl[0], "JavaScript:  %s", nsoption_bool(enable_javascript) ?
 			 "On (experimental)" : "Off");
+		{
+			struct nsurl *u = browser_window_access_url(gw->bw);
+			const char *site = nsx_site_name(u);
+			static const char *const jm[] = { "default", "always on", "always off" };
+			if (site != NULL)
+				snprintf(lbl[S_JSSITE], sizeof lbl[0], "JavaScript on %.60s:  %s",
+					 site, jm[nsx_site_js_get(u)]);
+			else
+				snprintf(lbl[S_JSSITE], sizeof lbl[0], "JavaScript on this site:  (no site open)");
+		}
 		snprintf(lbl[S_IMAGES], sizeof lbl[0], "Show images:  %s", onoff(nsoption_bool(foreground_images)));
 		snprintf(lbl[S_ADS], sizeof lbl[0], "Block ads:  %s", onoff(nsoption_bool(block_advertisements)));
+		snprintf(lbl[S_DARK], sizeof lbl[0], "Dark mode:  %s", onoff(nsoption_bool(xbox_dark_mode)));
+		if (nsoption_int(xbox_screensaver) > 0)
+			snprintf(lbl[S_SAVER], sizeof lbl[0], "Screensaver:  after %d minutes", nsoption_int(xbox_screensaver));
+		else
+			snprintf(lbl[S_SAVER], sizeof lbl[0], "Screensaver:  Off");
 		snprintf(lbl[S_HD], sizeof lbl[0], "720p (HD) video:  %s  (after restart)", onoff(nsoption_bool(xbox_hd)));
 		snprintf(lbl[S_KBD], sizeof lbl[0], "USB keyboard layout:  %s", nsoption_bool(xbox_kbd_us) ? "US" : "Portuguese");
 		snprintf(lbl[S_CLEAR], sizeof lbl[0], "Clear history, cookies and cache");
@@ -1268,6 +1284,16 @@ static void fb_settings_menu(struct gui_window *gw)
 		case S_JS:
 			nsoption_set_bool(enable_javascript, !nsoption_bool(enable_javascript));
 			break;
+		case S_JSSITE: {
+			struct nsurl *u = browser_window_access_url(gw->bw);
+			if (nsx_site_name(u) == NULL)
+				continue; /* nothing to change, no reload */
+			int m = ((int)nsx_site_js_get(u) + (dir < 0 ? 2 : 1)) % 3;
+			CreateDirectoryA("D:\\data", NULL);
+			if (!nsx_site_js_set(u, (enum nsx_site_js)m))
+				nsx_toast("Could not save D:\\data\\js-sites.txt");
+			break;
+		}
 		case S_IMAGES: {
 			bool v = !nsoption_bool(foreground_images);
 			nsoption_set_bool(foreground_images, v);
@@ -1277,6 +1303,17 @@ static void fb_settings_menu(struct gui_window *gw)
 		case S_ADS:
 			nsoption_set_bool(block_advertisements, !nsoption_bool(block_advertisements));
 			break;
+		case S_DARK:
+			nsoption_set_bool(xbox_dark_mode, !nsoption_bool(xbox_dark_mode));
+			break;
+		case S_SAVER: {
+			static const int mins[] = { 0, 2, 5, 10, 20 };
+			int at = 2, cur = nsoption_int(xbox_screensaver);
+			for (int i = 0; i < 5; i++) if (mins[i] == cur) at = i;
+			at = (at + (dir < 0 ? 4 : 1)) % 5;
+			nsoption_set_int(xbox_screensaver, mins[at]);
+			break;
+		}
 		case S_HD:
 			nsoption_set_bool(xbox_hd, !nsoption_bool(xbox_hd));
 			break;
@@ -1304,10 +1341,98 @@ static void fb_settings_menu(struct gui_window *gw)
 	}
 }
 
+/*
+ * Saves the screen as a 24-bit BMP: <drive of the download folder>:\Screenshots
+ * (E: by default), falling back to D:\Screenshots. Runs after the menu has
+ * gone, so the picture shows the page.
+ */
+static bool fb_write_bmp(const char *path, nsfb_t *fb)
+{
+	int w, h, stride;
+	enum nsfb_format_e fmt;
+	uint8_t *ptr, *row;
+	FILE *f;
+	bool bgr, ok;
+	uint32_t rowlen, size;
+	uint8_t hdr[54] = { 'B', 'M' };
+
+	if (nsfb_get_geometry(fb, &w, &h, &fmt) != 0 ||
+	    nsfb_get_buffer(fb, &ptr, &stride) != 0 || ptr == NULL || w <= 0 || h <= 0)
+		return false;
+	if (fmt != NSFB_FMT_XBGR8888 && fmt != NSFB_FMT_ABGR8888 &&
+	    fmt != NSFB_FMT_XRGB8888 && fmt != NSFB_FMT_ARGB8888)
+		return false;
+	bgr = (fmt == NSFB_FMT_XBGR8888 || fmt == NSFB_FMT_ABGR8888);
+	rowlen = ((uint32_t)w * 3 + 3) & ~3u;
+	size = 54 + rowlen * (uint32_t)h;
+#define LE32(o, v) do { hdr[o] = (uint8_t)(v); hdr[o + 1] = (uint8_t)((v) >> 8); \
+		hdr[o + 2] = (uint8_t)((v) >> 16); hdr[o + 3] = (uint8_t)((v) >> 24); } while (0)
+	LE32(2, size); LE32(10, 54); LE32(14, 40); LE32(18, (uint32_t)w); LE32(22, (uint32_t)h);
+	hdr[26] = 1; hdr[28] = 24; LE32(34, rowlen * (uint32_t)h);
+	LE32(38, 2835); LE32(42, 2835);
+#undef LE32
+	row = calloc(1, rowlen);
+	if (row == NULL)
+		return false;
+	f = fopen(path, "wb");
+	if (f == NULL) {
+		free(row);
+		return false;
+	}
+	ok = fwrite(hdr, 1, 54, f) == 54;
+	for (int y = h - 1; ok && y >= 0; y--) {   /* BMP rows go bottom-up */
+		const uint32_t *src = (const uint32_t *)(ptr + (size_t)y * stride);
+		for (int x = 0; x < w; x++) {
+			uint32_t p = src[x];
+			uint8_t r, g, b;
+			if (bgr) { r = p & 0xff; g = (p >> 8) & 0xff; b = (p >> 16) & 0xff; }
+			else     { b = p & 0xff; g = (p >> 8) & 0xff; r = (p >> 16) & 0xff; }
+			row[x * 3] = b; row[x * 3 + 1] = g; row[x * 3 + 2] = r;
+		}
+		ok = fwrite(row, 1, rowlen, f) == rowlen;
+	}
+	ok = (fclose(f) == 0) && ok;
+	free(row);
+	if (!ok)
+		remove(path);
+	return ok;
+}
+
+static void fb_screenshot(struct gui_window *gw)
+{
+	const char *dl = nsoption_charp(xbox_download_dir);
+	char drives[2] = { (dl && dl[0] && dl[1] == ':') ? dl[0] : 'E', 'D' };
+	char dir[32], path[64];
+
+	(void)gw;
+	/* the page as it is, without the menu */
+	fbtk_request_redraw(fbtk);
+	fbtk_redraw(fbtk);
+	for (int d = 0; d < 2; d++) {
+		snprintf(dir, sizeof dir, "%c:\\Screenshots", drives[d]);
+		CreateDirectoryA(dir, NULL);
+		for (int i = 1; i <= 9999; i++) {
+			FILE *t;
+			snprintf(path, sizeof path, "%s\\NSX%04d.BMP", dir, i);
+			t = fopen(path, "rb");
+			if (t != NULL) { fclose(t); continue; }
+			if (fb_write_bmp(path, fbtk_get_nsfb(fbtk))) {
+				char msg[96];
+				NSLOG(netsurf, INFO, "Screenshot saved: %s", path);
+				snprintf(msg, sizeof msg, "Saved %s", path);
+				nsx_toast(msg);
+				return;
+			}
+			break; /* this drive does not work: try the next one */
+		}
+	}
+	nsx_toast("Could not save the screenshot");
+}
+
 static void fb_start_menu(struct gui_window *gw)
 {
-	enum { M_HOME, M_BOOKMARKS, M_HISTORY, M_FIND, M_FIND_NEXT, M_ZOOM, M_DOWNLOAD,
-	       M_SETTINGS, M_HELP, M_EXIT, M_COUNT };
+	enum { M_HOME, M_BOOKMARKS, M_HISTORY, M_FIND, M_FIND_NEXT, M_ZOOM, M_READER,
+	       M_SHOT, M_DOWNLOAD, M_SETTINGS, M_HELP, M_EXIT, M_COUNT };
 	char dlabel[160];
 	struct nsx_dl_info dli;
 	char find_next[300];
@@ -1328,6 +1453,9 @@ static void fb_start_menu(struct gui_window *gw)
 	snprintf(zoom, sizeof zoom, "Zoom: %d%%  (A resets to 100%%)",
 		 (int)(browser_window_get_scale(gw->bw) * 100.0f + 0.5f));
 	ADD(M_ZOOM, zoom);
+	ADD(M_READER, nsoption_bool(author_level_css) ? "Reader mode: Off  (A: plain text view)" :
+		      "Reader mode: On  (A: back to the site's style)");
+	ADD(M_SHOT, "Save a screenshot");
 	if (nsx_dl_poll(&dli) == NSX_DL_RUNNING) {
 		if (dli.total > 0)
 			snprintf(dlabel, sizeof dlabel, "Download %d%%: %.30s  (A to cancel)",
@@ -1371,6 +1499,13 @@ static void fb_start_menu(struct gui_window *gw)
 			} else {
 				fb_zoom(gw, dir * 0.1f);
 			}
+			break;
+		case M_READER:
+			nsoption_set_bool(author_level_css, !nsoption_bool(author_level_css));
+			browser_window_reload(gw->bw, false);
+			break;
+		case M_SHOT:
+			fb_screenshot(gw);
 			break;
 		case M_DOWNLOAD: {
 			static const char *const yn[] = { "No", "Yes, cancel it" };
@@ -1419,8 +1554,7 @@ static void fb_handle_keyboard(struct gui_window *gw)
 			case 'l': fb_url_osk(gw, fbtk_get_text(gw->url)); break;
 			case 'r': browser_window_reload(bw, true); break;
 			case 'd':
-				nsx_toast(nsx_bookmark_add(bw) ? "Added to bookmarks" :
-					  "This page cannot be bookmarked");
+				nsx_bookmark_button(bw);
 				break;
 			case 'f': fb_find(gw, false); break;
 			case 'g': fb_find(gw, true); break;
@@ -1569,8 +1703,7 @@ static void fb_handle_xbox_input(void)
 			nsx_help_show();
 			break;
 		case NSX_CMD_BOOKMARK:
-			nsx_toast(nsx_bookmark_add(gw->bw) ? "Added to bookmarks" :
-				  "This page cannot be bookmarked");
+			nsx_bookmark_button(gw->bw);
 			break;
 		case NSX_CMD_PAGE_UP:
 			if (browser_window_key_press(gw->bw, NS_KEY_PAGE_UP) == false)
@@ -1624,6 +1757,10 @@ static void framebuffer_run(void)
 		nsx_heartbeat("controller/keyboard");
 		fb_handle_xbox_input();
 
+		if (nsoption_int(xbox_screensaver) > 0 &&
+		    nsfb_xbox_idle_ms() > (uint32_t)nsoption_int(xbox_screensaver) * 60000u)
+			nsx_screensaver_run();
+
 		nsx_heartbeat("redraw");
 		if (fbtk_get_redraw_pending(fbtk)) {
 			uint32_t t = GetTickCount();
@@ -1655,6 +1792,7 @@ static void gui_quit(void)
 	NSLOG(netsurf, INFO, "gui_quit");
 
 	urldb_save_cookies(nsoption_charp(cookie_jar));
+	nsx_sites_fini();
 
 	framebuffer_finalise();
 }
@@ -3330,6 +3468,7 @@ main(int argc, char** argv)
 	}
 	/* opcoes do utilizador (opcional): D:\data\Choices */
 	nsoption_read("D:\\data\\Choices", nsoptions);
+	nsoption_set_bool(author_level_css, true); /* reader mode is per session */
 	if (nsoption_int(memory_cache_size) <= 0)      /* 0 = automatic */
 		nsoption_set_int(memory_cache_size, auto_memory_cache_size());
 	NSLOG(netsurf, INFO, "[NSX] memory cache %d KB", nsoption_int(memory_cache_size) / 1024);

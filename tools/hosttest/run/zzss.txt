@@ -1,0 +1,4 @@
+66000 shot SS1.png
+66500 tap A
+68000 shot SS2.png
+68200 quit
